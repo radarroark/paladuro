@@ -1,0 +1,18 @@
+.{
+    .name = .hexy,
+    .version = "0.0.0",
+    .dependencies = .{
+        .glfw = .{
+            .url = "git+https://github.com/allyourcodebase/glfw#98607df9bce062c7fd837d58fafa06dae22edb04",
+            .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "deps",
+        "src",
+        "LICENSE",
+    },
+    .fingerprint = 0x5ff5335d3be351e1,
+}
