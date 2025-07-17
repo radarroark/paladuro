@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -14,6 +15,9 @@ pub fn build(b: *std.Build) !void {
         exe.linkLibC();
         exe.addIncludePath(b.path("deps"));
         exe.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
+        if (builtin.os.tag == .linux) {
+            exe.linkSystemLibrary("GL");
+        }
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
