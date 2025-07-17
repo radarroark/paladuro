@@ -5,8 +5,19 @@ const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
 
+export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) void {
+    _ = scancode;
+    _ = mods;
+
+    if (action == c.GLFW_RELEASE) {
+        if (key == c.GLFW_KEY_ESCAPE) {
+            c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
+        }
+    }
+}
+
 pub fn main() !void {
-    if (c.GLFW_TRUE != c.glfwInit()) {
+    if (c.glfwInit() != c.GLFW_TRUE) {
         var desc: [*c]const u8 = null;
         const err = c.glfwGetError(&desc);
         std.debug.print("error: {x} {s}\n", .{ err, desc });
@@ -26,7 +37,9 @@ pub fn main() !void {
     c.glfwMakeContextCurrent(window);
     c.glfwSwapInterval(1);
 
-    while (c.GLFW_TRUE != c.glfwWindowShouldClose(window)) {
+    _ = c.glfwSetKeyCallback(window, keyCallback);
+
+    while (c.glfwWindowShouldClose(window) != c.GLFW_TRUE) {
         c.glfwSwapBuffers(window);
         c.glfwPollEvents();
         std.time.sleep(5000000);
