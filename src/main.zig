@@ -21,7 +21,7 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
 }
 
 const Game = struct {
-    texture: Texture(c.GLubyte),
+    tiles_texture: Texture(c.GLubyte),
 
     fn init(allocator: std.mem.Allocator) !Game {
         c.glEnable(c.GL_BLEND);
@@ -29,15 +29,9 @@ const Game = struct {
         c.glEnable(c.GL_DEPTH_TEST);
 
         const tiles_image = @embedFile("assets/tiles.png");
-        var width: c_int = 0;
-        var height: c_int = 0;
-        var channels: c_int = 0;
-        const data = c.stbi_load_from_memory(tiles_image, tiles_image.len, &width, &height, &channels, 4);
-        var texture = try Texture(c.GLubyte).init(
+        var tiles_texture = try Texture(c.GLubyte).init(
             allocator,
-            width,
-            height,
-            data,
+            tiles_image,
             &.{
                 .{ c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE },
                 .{ c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE },
@@ -47,15 +41,15 @@ const Game = struct {
             &.{},
             &.{c.GL_TEXTURE_2D},
         );
-        errdefer texture.deinit();
+        errdefer tiles_texture.deinit();
 
         return .{
-            .texture = texture,
+            .tiles_texture = tiles_texture,
         };
     }
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
-        self.texture.deinit(allocator);
+        self.tiles_texture.deinit(allocator);
     }
 
     fn tick(self: *Game) !void {
@@ -76,7 +70,7 @@ const TextureOpts = struct {
 
 fn Texture(comptime T: type) type {
     return struct {
-        data: [*]T,
+        image: [*]T,
         opts: TextureOpts,
         params: []const [2]c.GLenum,
         pixel_store_params: []const [2]c.GLenum,
@@ -86,20 +80,18 @@ fn Texture(comptime T: type) type {
 
         fn init(
             allocator: std.mem.Allocator,
-            width: c.GLsizei,
-            height: c.GLsizei,
-            data: [*]T,
+            image: []const u8,
             params: []const [2]c.GLenum,
             pixel_store_params: []const [2]c.GLenum,
             mipmap_params: []const c.GLenum,
         ) !Texture(T) {
             var self = Texture(c.GLubyte){
-                .data = data,
+                .image = undefined,
                 .opts = .{
                     .mip_level = 0,
                     .internal_fmt = c.GL_RGBA,
-                    .width = width,
-                    .height = height,
+                    .width = 0,
+                    .height = 0,
                     .border = 0,
                     .src_fmt = c.GL_RGBA,
                 },
@@ -109,17 +101,25 @@ fn Texture(comptime T: type) type {
                 .unit = 0,
                 .texture_num = 0,
             };
+
+            var channels: c_int = 0;
+            self.image = c.stbi_load_from_memory(image.ptr, @intCast(image.len), &self.opts.width, &self.opts.height, &channels, 4);
+            errdefer c.stbi_image_free(self.image);
+
             self.params = try allocator.dupe([2]c.GLenum, params);
             errdefer allocator.free(self.params);
+
             self.pixel_store_params = try allocator.dupe([2]c.GLenum, pixel_store_params);
             errdefer allocator.free(self.pixel_store_params);
+
             self.mipmap_params = try allocator.dupe(c.GLenum, mipmap_params);
             errdefer allocator.free(self.mipmap_params);
+
             return self;
         }
 
         fn deinit(self: *Texture(T), allocator: std.mem.Allocator) void {
-            c.stbi_image_free(self.data);
+            c.stbi_image_free(self.image);
             allocator.free(self.params);
             allocator.free(self.pixel_store_params);
             allocator.free(self.mipmap_params);
