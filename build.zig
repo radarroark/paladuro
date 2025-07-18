@@ -43,6 +43,7 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.addIncludePath(b.path("deps/include"));
     step.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
     step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
+    step.root_module.addImport("zlm", b.dependency("zlm", .{}).module("zlm"));
     switch (builtin.os.tag) {
         .linux => step.linkSystemLibrary("GL"),
         .windows => step.linkSystemLibrary("opengl32"),
