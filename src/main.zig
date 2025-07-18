@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_GLCOREARB", "1");
@@ -19,25 +20,120 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
     }
 }
 
-const tiles_image = @embedFile("assets/tiles.png");
+const Game = struct {
+    texture: Texture(c.GLubyte),
 
-fn init() !void {
-    c.glEnable(c.GL_BLEND);
-    c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
-    c.glEnable(c.GL_DEPTH_TEST);
+    fn init(allocator: std.mem.Allocator) !Game {
+        c.glEnable(c.GL_BLEND);
+        c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
+        c.glEnable(c.GL_DEPTH_TEST);
 
-    var width: c_int = 0;
-    var height: c_int = 0;
-    var channels: c_int = 0;
-    _ = c.stbi_load_from_memory(tiles_image, tiles_image.len, &width, &height, &channels, 4);
-}
+        const tiles_image = @embedFile("assets/tiles.png");
+        var width: c_int = 0;
+        var height: c_int = 0;
+        var channels: c_int = 0;
+        const data = c.stbi_load_from_memory(tiles_image, tiles_image.len, &width, &height, &channels, 4);
+        var texture = try Texture(c.GLubyte).init(
+            allocator,
+            width,
+            height,
+            data,
+            &.{
+                .{ c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE },
+                .{ c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE },
+                .{ c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST },
+                .{ c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST },
+            },
+            &.{},
+            &.{c.GL_TEXTURE_2D},
+        );
+        errdefer texture.deinit();
 
-fn tick() !void {
-    c.glClearColor(173.0 / 255.0, 216.0 / 255.0, 230.0 / 255.0, 1);
-    c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+        return .{
+            .texture = texture,
+        };
+    }
+
+    fn deinit(self: *Game, allocator: std.mem.Allocator) void {
+        self.texture.deinit(allocator);
+    }
+
+    fn tick(self: *Game) !void {
+        _ = self;
+        c.glClearColor(173.0 / 255.0, 216.0 / 255.0, 230.0 / 255.0, 1);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+    }
+};
+
+const TextureOpts = struct {
+    mip_level: c.GLint,
+    internal_fmt: c.GLenum,
+    width: c.GLsizei,
+    height: c.GLsizei,
+    border: c.GLint,
+    src_fmt: c.GLenum,
+};
+
+fn Texture(comptime T: type) type {
+    return struct {
+        data: [*]T,
+        opts: TextureOpts,
+        params: []const [2]c.GLenum,
+        pixel_store_params: []const [2]c.GLenum,
+        mipmap_params: []const c.GLenum,
+        unit: c.GLint,
+        texture_num: c.GLuint,
+
+        fn init(
+            allocator: std.mem.Allocator,
+            width: c.GLsizei,
+            height: c.GLsizei,
+            data: [*]T,
+            params: []const [2]c.GLenum,
+            pixel_store_params: []const [2]c.GLenum,
+            mipmap_params: []const c.GLenum,
+        ) !Texture(T) {
+            var self = Texture(c.GLubyte){
+                .data = data,
+                .opts = .{
+                    .mip_level = 0,
+                    .internal_fmt = c.GL_RGBA,
+                    .width = width,
+                    .height = height,
+                    .border = 0,
+                    .src_fmt = c.GL_RGBA,
+                },
+                .params = undefined,
+                .pixel_store_params = undefined,
+                .mipmap_params = undefined,
+                .unit = 0,
+                .texture_num = 0,
+            };
+            self.params = try allocator.dupe([2]c.GLenum, params);
+            errdefer allocator.free(self.params);
+            self.pixel_store_params = try allocator.dupe([2]c.GLenum, pixel_store_params);
+            errdefer allocator.free(self.pixel_store_params);
+            self.mipmap_params = try allocator.dupe(c.GLenum, mipmap_params);
+            errdefer allocator.free(self.mipmap_params);
+            return self;
+        }
+
+        fn deinit(self: *Texture(T), allocator: std.mem.Allocator) void {
+            c.stbi_image_free(self.data);
+            allocator.free(self.params);
+            allocator.free(self.pixel_store_params);
+            allocator.free(self.mipmap_params);
+        }
+    };
 }
 
 pub fn main() !void {
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    const allocator = if (builtin.mode == .Debug) debug_allocator.allocator() else std.heap.smp_allocator;
+    defer if (builtin.mode == .Debug) {
+        _ = debug_allocator.deinit();
+    };
+
     if (c.glfwInit() != c.GLFW_TRUE) {
         var desc: [*c]const u8 = null;
         const err = c.glfwGetError(&desc);
@@ -60,10 +156,11 @@ pub fn main() !void {
 
     _ = c.glfwSetKeyCallback(window, keyCallback);
 
-    try init();
+    var game = try Game.init(allocator);
+    defer game.deinit(allocator);
 
     while (c.glfwWindowShouldClose(window) != c.GLFW_TRUE) {
-        try tick();
+        try game.tick();
         c.glfwSwapBuffers(window);
         c.glfwPollEvents();
     }
