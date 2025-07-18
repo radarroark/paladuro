@@ -41,6 +41,7 @@ pub fn build(b: *std.Build) !void {
 fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.linkLibC();
     step.addIncludePath(b.path("deps/include"));
+    step.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
     step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
     switch (builtin.os.tag) {
         .linux => step.linkSystemLibrary("GL"),

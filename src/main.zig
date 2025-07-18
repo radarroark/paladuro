@@ -5,6 +5,7 @@ const c = @cImport({
     @cDefine("GL_GLEXT_PROTOTYPES", "1");
     @cInclude("GLFW/glfw3.h");
     @cInclude("GL/glcorearb.h");
+    @cInclude("stb_image.h");
 });
 
 export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) void {
@@ -18,10 +19,17 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
     }
 }
 
+const tiles_image = @embedFile("assets/tiles.png");
+
 fn init() !void {
     c.glEnable(c.GL_BLEND);
     c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
     c.glEnable(c.GL_DEPTH_TEST);
+
+    var width: c_int = 0;
+    var height: c_int = 0;
+    var channels: c_int = 0;
+    _ = c.stbi_load_from_memory(tiles_image, tiles_image.len, &width, &height, &channels, 4);
 }
 
 fn tick() !void {
