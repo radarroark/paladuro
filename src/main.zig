@@ -48,6 +48,11 @@ const Game = struct {
         var base_entity = try UncompiledThreeDTextureEntity.init(allocator, &.{}, &.{}, &.{}, tiles_texture);
         errdefer base_entity.deinit(allocator);
 
+        const tile_size: c.GLfloat = 32;
+        base_entity.setTile(1, 3 * tile_size, 0 * tile_size, tile_size, tile_size); // gravel
+        base_entity.setTile(2, 0 * tile_size, 3 * tile_size, tile_size, tile_size); // water
+        base_entity.setTile(3, 4 * tile_size, 0 * tile_size, tile_size, tile_size); // stone
+
         return .{
             .tiles_texture = tiles_texture,
             .base_entity = base_entity,
@@ -308,7 +313,57 @@ const UncompiledThreeDTextureEntity = struct {
         allocator.free(self.uncompiled_entity.entity.uniforms.u_texture_matrix.data);
         allocator.free(self.uncompiled_entity.entity.uniforms.u_tiles.data);
     }
+
+    fn setTile(
+        self: *UncompiledThreeDTextureEntity,
+        index: usize,
+        x: c.GLfloat,
+        y: c.GLfloat,
+        width: c.GLfloat,
+        height: c.GLfloat,
+    ) void {
+        const tex_width: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.width);
+        const tex_height: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.height);
+        var m = translateMat3(x / tex_width, y / tex_height);
+        m = mulMat3(scaleMat3(width / tex_width, height / tex_height), m);
+        self.uncompiled_entity.entity.uniforms.u_texture_matrix.data[index] = m;
+        self.uncompiled_entity.entity.uniforms.u_texture_matrix.disable = false;
+    }
 };
+
+fn translateMat3(x: f32, y: f32) zlm.Mat3 {
+    return .{
+        .fields = [3][3]f32{
+            [3]f32{ 1, 0, x },
+            [3]f32{ 0, 1, y },
+            [3]f32{ 0, 0, 1 },
+        },
+    };
+}
+
+fn scaleMat3(x: f32, y: f32) zlm.Mat3 {
+    return .{
+        .fields = [3][3]f32{
+            [3]f32{ x, 0, 0 },
+            [3]f32{ 0, y, 0 },
+            [3]f32{ 0, 0, 1 },
+        },
+    };
+}
+
+fn mulMat3(a: zlm.Mat3, b: zlm.Mat3) zlm.Mat3 {
+    var result: zlm.Mat3 = undefined;
+    inline for (0..3) |row| {
+        inline for (0..3) |col| {
+            var sum: f32 = 0.0;
+            inline for (0..3) |i| {
+                sum += a.fields[row][i] * b.fields[i][col];
+            }
+            result.fields[row][col] = sum;
+        }
+    }
+    return result;
+}
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
