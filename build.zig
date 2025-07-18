@@ -44,6 +44,7 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
     switch (builtin.os.tag) {
         .linux => step.linkSystemLibrary("GL"),
+        .windows => step.linkSystemLibrary("opengl32"),
         else => @panic("must link opengl for this OS"),
     }
 }
