@@ -12,12 +12,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        exe.linkLibC();
-        exe.addIncludePath(b.path("deps"));
-        exe.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
-        if (builtin.os.tag == .linux) {
-            exe.linkSystemLibrary("GL");
-        }
+        addDeps(b, exe);
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -35,12 +30,20 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        unit_tests.linkLibC();
-        unit_tests.addIncludePath(b.path("deps"));
-        unit_tests.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
+        addDeps(b, unit_tests);
 
         const run_unit_tests = b.addRunArtifact(unit_tests);
         const test_step = b.step("test", "Run unit tests");
         test_step.dependOn(&run_unit_tests.step);
+    }
+}
+
+fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
+    step.linkLibC();
+    step.addIncludePath(b.path("deps/include"));
+    step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
+    switch (builtin.os.tag) {
+        .linux => step.linkSystemLibrary("GL"),
+        else => @panic("must link opengl for this OS"),
     }
 }
