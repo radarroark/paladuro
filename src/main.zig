@@ -44,7 +44,7 @@ pub fn main() !void {
     c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_TRUE);
 
-    const window = c.glfwCreateWindow(1024, 768, "Hexy", null, null) orelse unreachable;
+    const window = c.glfwCreateWindow(1024, 768, "Paladuro", null, null) orelse unreachable;
     defer c.glfwDestroyWindow(window);
 
     c.glfwMakeContextCurrent(window);
