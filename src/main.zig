@@ -22,6 +22,24 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
     }
 }
 
+const Sizes = struct {
+    density: c_int = 0,
+    window_width: c_int = 0,
+    window_height: c_int = 0,
+    world_width: c_int = 0,
+    world_height: c_int = 0,
+};
+
+var sizes: Sizes = .{};
+
+export fn frameSizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) void {
+    _ = window;
+    sizes.window_width = width;
+    sizes.window_height = height;
+    sizes.world_width = @divTrunc(width, sizes.density);
+    sizes.world_height = @divTrunc(height, sizes.density);
+}
+
 const Game = struct {
     tiles_texture: Texture(c.GLubyte),
     grid_entity: InstancedThreeDTextureEntity,
@@ -841,6 +859,18 @@ pub fn main() !void {
     c.glfwSwapInterval(1);
 
     _ = c.glfwSetKeyCallback(window, keyCallback);
+    _ = c.glfwSetFramebufferSizeCallback(window, frameSizeCallback);
+
+    var width: c_int = 0;
+    var height: c_int = 0;
+    c.glfwGetFramebufferSize(window, &width, &height);
+
+    var window_width: c_int = 0;
+    var window_height: c_int = 0;
+    c.glfwGetWindowSize(window, &window_width, &window_height);
+
+    sizes.density = @max(1, @divTrunc(width, window_width));
+    frameSizeCallback(window, width, height);
 
     var game = try Game.init(allocator);
     defer game.deinit(allocator);
