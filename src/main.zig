@@ -127,7 +127,7 @@ const Game = struct {
                 } else {
                     e.setSide(.bottom, 1);
                 }
-                instanced_entity.set(x * y, e);
+                instanced_entity.set((x * grid_width) + y, e);
             }
         }
 
@@ -235,7 +235,7 @@ const Game = struct {
             }
         }
 
-        c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count));
+        c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count), @intCast(array_entity.instance_count));
 
         c.glUseProgram(previous_program);
         c.glBindVertexArray(previous_vao);
@@ -521,6 +521,7 @@ fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
     return struct {
         compiled_entity: CompiledEntity(UniT, AttrT),
         draw_count: usize,
+        instance_count: usize,
 
         fn setBuffers(self: *ArrayEntity(UniT, AttrT)) void {
             inline for (@typeInfo(@TypeOf(self.compiled_entity.entity.attributes)).@"struct".fields) |field| {
@@ -538,6 +539,8 @@ fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
             const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
             if (attr.divisor == 0) {
                 self.draw_count = draw_count;
+            } else if (attr.divisor == 1) {
+                self.instance_count = draw_count;
             }
             attr.buffer.disable = true;
         }
@@ -565,12 +568,13 @@ fn Buffer(comptime T: type) type {
         }
 
         fn setMat4(self: *Buffer(f32), index: usize, uni: Uniform(zlm.Mat4)) void {
+            const m = uni.data.transpose();
             for (0..4) |row| {
                 for (0..4) |col| {
-                    self.data[row * 4 + col + index * 16] = uni.data.fields[row][col];
+                    self.data[row * 4 + col + index * 16] = m.fields[row][col];
                 }
-                self.disable = false;
             }
+            self.disable = false;
         }
     };
 }
