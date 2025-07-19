@@ -44,6 +44,14 @@ const Game = struct {
     tiles_texture: Texture(c.GLubyte),
     grid_entity: InstancedThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
+    player: Player = .{},
+
+    const Player = struct {
+        x: usize = 0,
+        y: usize = 0,
+        x_angle: f32 = -45.0,
+        y_angle: f32 = 0,
+    };
 
     fn init(allocator: std.mem.Allocator) !Game {
         c.glEnable(c.GL_BLEND);
@@ -138,9 +146,15 @@ const Game = struct {
     }
 
     fn tick(self: *Game) !void {
-        _ = self;
         c.glClearColor(173.0 / 255.0, 216.0 / 255.0, 230.0 / 255.0, 1);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+        c.glViewport(0, 0, sizes.window_width, sizes.window_height);
+
+        var camera = zlm.Mat4.identity;
+        camera = camera.mul(translateMat4(@floatFromInt(self.player.x), 0, @floatFromInt(self.player.y)));
+        camera = camera.mul(rotateYMat4(degToRad(self.player.y_angle)));
+        camera = camera.mul(rotateXMat4(degToRad(self.player.x_angle)));
+        camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(sizes.world_height)) / 2.0, 0));
     }
 
     fn compile(self: Game, comptime CompiledT: type, comptime UniT: type, comptime AttrT: type, uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT)) !CompiledT {
@@ -188,6 +202,10 @@ const Game = struct {
         _ = uni;
     }
 };
+
+fn degToRad(degrees: c.GLfloat) c.GLfloat {
+    return (degrees * std.math.pi) / 180.0;
+}
 
 fn initBuffer() c.GLuint {
     var result: c.GLuint = 0;
@@ -639,6 +657,32 @@ fn mulMat3(a: zlm.Mat3, b: zlm.Mat3) zlm.Mat3 {
         }
     }
     return result;
+}
+
+fn rotateXMat4(angle: f32) zlm.Mat4 {
+    const cos = @cos(angle);
+    const sin = @sin(angle);
+    return .{
+        .fields = [4][4]f32{
+            [4]f32{ 1, 0, 0, 0 },
+            [4]f32{ 0, cos, -sin, 0 },
+            [4]f32{ 0, sin, cos, 0 },
+            [4]f32{ 0, 0, 0, 1 },
+        },
+    };
+}
+
+fn rotateYMat4(angle: f32) zlm.Mat4 {
+    const cos = @cos(angle);
+    const sin = @sin(angle);
+    return .{
+        .fields = [4][4]f32{
+            [4]f32{ cos, 0, sin, 0 },
+            [4]f32{ 0, 1, 0, 0 },
+            [4]f32{ -sin, 0, cos, 0 },
+            [4]f32{ 0, 0, 0, 1 },
+        },
+    };
 }
 
 const InstancedThreeDTextureEntityUniforms = struct {
