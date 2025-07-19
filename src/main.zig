@@ -23,7 +23,7 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
 
 const Game = struct {
     tiles_texture: Texture(c.GLubyte),
-    uncompiled_entity: UncompiledInstancedThreeDTextureEntity,
+    instanced_entity: UncompiledInstancedThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
 
     fn init(allocator: std.mem.Allocator) !Game {
@@ -57,8 +57,8 @@ const Game = struct {
         const grid_width = 10;
         const grid_height = 10;
 
-        var uncompiled_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
-        errdefer uncompiled_entity.deinit(allocator);
+        var instanced_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
+        errdefer instanced_entity.deinit(allocator);
 
         var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
@@ -98,20 +98,24 @@ const Game = struct {
                 } else {
                     e.setSide(.bottom, 1);
                 }
-                uncompiled_entity.set(x * y, e);
+                instanced_entity.set(x * y, e);
             }
         }
 
-        return .{
+        var self = Game{
             .tiles_texture = tiles_texture,
-            .uncompiled_entity = uncompiled_entity,
+            .instanced_entity = instanced_entity,
             .tiles_to_pixels = tiles_to_pixels,
         };
+
+        _ = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
+
+        return self;
     }
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
-        self.uncompiled_entity.deinit(allocator);
+        self.instanced_entity.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
@@ -120,7 +124,133 @@ const Game = struct {
         c.glClearColor(173.0 / 255.0, 216.0 / 255.0, 230.0 / 255.0, 1);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
     }
+
+    fn compile(self: Game, comptime CompiledT: type, comptime UniT: type, comptime AttrT: type, uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT)) !CompiledT {
+        var previous_program: c.GLuint = 0;
+        var previous_vao: c.GLuint = 0;
+        c.glGetIntegerv(c.GL_CURRENT_PROGRAM, @ptrCast(&previous_program));
+        c.glGetIntegerv(c.GL_VERTEX_ARRAY_BINDING, @ptrCast(&previous_vao));
+
+        var result: CompiledT = undefined;
+        result.compiled_entity.program = try createProgram(uncompiled_entity.vertex_source, uncompiled_entity.fragment_source);
+        c.glUseProgram(result.compiled_entity.program);
+        c.glGenVertexArrays(1, &result.compiled_entity.vao);
+        c.glBindVertexArray(result.compiled_entity.vao);
+        result.compiled_entity.entity.attributes = uncompiled_entity.entity.attributes;
+        result.compiled_entity.entity.uniforms = uncompiled_entity.entity.uniforms;
+
+        inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.attributes)).@"struct".fields) |field| {
+            @field(result.compiled_entity.entity.attributes, field.name).buffer.buffer = initBuffer();
+            result.setBuffers();
+        }
+
+        inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
+            if (!@field(result.compiled_entity.entity.uniforms, field.name).disable) {
+                self.callUniform(
+                    UniT,
+                    AttrT,
+                    uncompiled_entity.entity,
+                    field.name,
+                    @FieldType(@TypeOf(result.compiled_entity.entity.uniforms), field.name),
+                    @field(result.compiled_entity.entity.uniforms, field.name),
+                );
+            }
+        }
+
+        c.glUseProgram(previous_program);
+        c.glBindVertexArray(previous_vao);
+
+        return result;
+    }
+
+    fn callUniform(self: Game, comptime UniT: type, comptime AttrT: type, entity: Entity(UniT, AttrT), uni_name: []const u8, comptime T: type, uni: T) void {
+        _ = self;
+        _ = entity;
+        _ = uni_name;
+        _ = uni;
+    }
 };
+
+fn initBuffer() c.GLuint {
+    var result: c.GLuint = 0;
+    c.glGenBuffers(1, &result);
+    return result;
+}
+
+fn checkShaderStatus(shader: c.GLuint) !void {
+    var params: c.GLint = 0;
+    c.glGetShaderiv(shader, c.GL_COMPILE_STATUS, &params);
+    if (params != c.GL_TRUE) {
+        return error.InvalidShaderStatus;
+    }
+}
+
+fn createShader(shader_type: c.GLenum, source: []const u8) !c.GLuint {
+    const result = c.glCreateShader(shader_type);
+    c.glShaderSource(result, 1, &source.ptr, null);
+    c.glCompileShader(result);
+    try checkShaderStatus(result);
+    return result;
+}
+
+fn checkProgramStatus(program: c.GLuint) !void {
+    var params: c.GLint = 0;
+    c.glGetProgramiv(program, c.GL_LINK_STATUS, &params);
+    if (params != c.GL_TRUE) {
+        return error.InvalidProgramStatus;
+    }
+}
+
+fn createProgram(v_source: []const u8, f_source: []const u8) !c.GLuint {
+    const v_shader = try createShader(c.GL_VERTEX_SHADER, v_source);
+    const f_shader = try createShader(c.GL_FRAGMENT_SHADER, f_source);
+    const result = c.glCreateProgram();
+    c.glAttachShader(result, v_shader);
+    c.glAttachShader(result, f_shader);
+    c.glLinkProgram(result);
+    c.glDeleteShader(v_shader);
+    c.glDeleteShader(f_shader);
+    try checkProgramStatus(result);
+    return result;
+}
+
+fn getTypeEnum(comptime T: type) c.GLenum {
+    return switch (T) {
+        c.GLfloat => c.GL_FLOAT,
+        c.GLint => c.GL_INT,
+        c.GLuint => c.GL_UNSIGNED_INT,
+        c.GLshort => c.GL_SHORT,
+        c.GLushort => c.GL_UNSIGNED_SHORT,
+        c.GLbyte => c.GL_BYTE,
+        c.GLubyte => c.GL_UNSIGNED_BYTE,
+        else => unreachable,
+    };
+}
+
+fn setProgramAttribute(program: c.GLuint, attrib_name: []const u8, comptime T: type, attr: T) usize {
+    const total_size = @as(usize, @intCast(attr.size)) * attr.iter;
+    const result: usize = attr.buffer.data.len / total_size;
+    var previous_buffer: c.GLint = 0;
+    c.glGetIntegerv(c.GL_ARRAY_BUFFER_BINDING, &previous_buffer);
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, attr.buffer.buffer);
+    if (attr.buffer.data.len > 0) {
+        c.glBufferData(c.GL_ARRAY_BUFFER, @intCast(@sizeOf(attr.InnerType) * attr.buffer.data.len), &attr.buffer.data[0], c.GL_STATIC_DRAW);
+    }
+    const kind = getTypeEnum(attr.InnerType);
+    const attrib_location: c.GLuint = @intCast(c.glGetAttribLocation(program, attrib_name.ptr));
+    for (0..attr.iter) |i| {
+        const loc = attrib_location + @as(c.GLuint, @intCast(i));
+        c.glEnableVertexAttribArray(loc);
+        if (attr.InnerType == c.GLfloat) {
+            c.glVertexAttribPointer(loc, attr.size, kind, if (attr.normalize) 1 else 0, @intCast(@sizeOf(attr.InnerType) * total_size), @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))));
+        } else {
+            c.glVertexAttribIPointer(loc, attr.size, kind, @intCast(@sizeOf(attr.InnerType) * total_size), @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))));
+        }
+        c.glVertexAttribDivisor(loc, attr.divisor);
+    }
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, @intCast(previous_buffer));
+    return result;
+}
 
 const TextureOpts = struct {
     mip_level: c.GLint,
@@ -198,14 +328,11 @@ fn Entity(comptime UniT: type, comptime AttrT: type) type {
 }
 
 fn UncompiledEntity(comptime CompiledT: type, comptime UniT: type, comptime AttrT: type) type {
+    _ = CompiledT;
     return struct {
         entity: Entity(UniT, AttrT),
         vertex_source: []const u8,
         fragment_source: []const u8,
-
-        fn compile(self: UncompiledEntity) CompiledT {
-            _ = self;
-        }
     };
 }
 
@@ -214,13 +341,39 @@ fn CompiledEntity(comptime UniT: type, comptime AttrT: type) type {
         entity: Entity(UniT, AttrT),
         program: c.GLuint,
         vao: c.GLuint,
+
+        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: T) [2]usize {
+            const divisor = attr.divisor;
+            const draw_count = setProgramAttribute(self.program, attr_name, T, attr);
+            return .{ divisor, draw_count };
+        }
     };
 }
 
 fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
     return struct {
         compiled_entity: CompiledEntity(UniT, AttrT),
-        draw_count: c.GLsizei,
+        draw_count: usize,
+
+        fn setBuffers(self: *ArrayEntity(UniT, AttrT)) void {
+            inline for (@typeInfo(@TypeOf(self.compiled_entity.entity.attributes)).@"struct".fields) |field| {
+                if (!@field(self.compiled_entity.entity.attributes, field.name).buffer.disable) {
+                    self.setBuffer(
+                        field.name,
+                        @FieldType(@TypeOf(self.compiled_entity.entity.attributes), field.name),
+                        &@field(self.compiled_entity.entity.attributes, field.name),
+                    );
+                }
+            }
+        }
+
+        fn setBuffer(self: *ArrayEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
+            const divisor, const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr.*);
+            if (divisor == 0) {
+                self.draw_count = draw_count;
+            }
+            attr.buffer.disable = true;
+        }
     };
 }
 
@@ -234,7 +387,7 @@ fn Uniform(comptime T: type) type {
 fn Buffer(comptime T: type) type {
     return struct {
         disable: bool = false,
-        //buffer: c.GLuint,
+        buffer: c.GLuint = 0,
         data: []T,
 
         fn set(self: *Buffer(T), index: usize, uni: T) void {
@@ -260,6 +413,8 @@ fn Attribute(comptime T: type) type {
         iter: usize,
         normalize: bool = false,
         divisor: u1 = 0,
+
+        comptime InnerType: type = T,
     };
 }
 
@@ -487,7 +642,7 @@ const InstancedThreeDTextureEntityAttributes = struct {
     a_tile8: Attribute(c.GLuint),
 };
 
-const InstancedThreeDTextureEntity = ArrayEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes);
+const InstancedThreeDTextureEntity = ArrayEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes);
 
 const UncompiledInstancedThreeDTextureEntity = struct {
     uncompiled_entity: UncompiledEntity(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes),
