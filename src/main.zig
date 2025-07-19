@@ -24,7 +24,7 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
 
 const Game = struct {
     tiles_texture: Texture(c.GLubyte),
-    instanced_entity: UncompiledInstancedThreeDTextureEntity,
+    grid_entity: InstancedThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
 
     fn init(allocator: std.mem.Allocator) !Game {
@@ -59,7 +59,7 @@ const Game = struct {
         const grid_height = 10;
 
         var instanced_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
-        errdefer instanced_entity.deinit(allocator);
+        defer instanced_entity.deinit(allocator);
 
         var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
@@ -105,18 +105,17 @@ const Game = struct {
 
         var self = Game{
             .tiles_texture = tiles_texture,
-            .instanced_entity = instanced_entity,
+            .grid_entity = undefined,
             .tiles_to_pixels = tiles_to_pixels,
         };
 
-        _ = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
+        self.grid_entity = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
 
         return self;
     }
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
-        self.instanced_entity.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
