@@ -325,7 +325,7 @@ const UncompiledThreeDTextureEntity = struct {
         const tex_width: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.width);
         const tex_height: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.height);
         var m = translateMat3(x / tex_width, y / tex_height);
-        m = mulMat3(scaleMat3(width / tex_width, height / tex_height), m);
+        m = mulMat3(m, scaleMat3(width / tex_width, height / tex_height));
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.data[index] = m;
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.disable = false;
     }
