@@ -155,6 +155,10 @@ const Game = struct {
         camera = camera.mul(rotateYMat4(degToRad(self.player.y_angle)));
         camera = camera.mul(rotateXMat4(degToRad(self.player.x_angle)));
         camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(sizes.world_height)) / 2.0, 0));
+
+        var e = self.grid_entity;
+        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
+        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
     }
 
     fn compile(self: Game, comptime CompiledT: type, comptime UniT: type, comptime AttrT: type, uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT)) !CompiledT {
@@ -680,6 +684,20 @@ fn rotateYMat4(angle: f32) zlm.Mat4 {
             [4]f32{ cos, 0, sin, 0 },
             [4]f32{ 0, 1, 0, 0 },
             [4]f32{ -sin, 0, cos, 0 },
+            [4]f32{ 0, 0, 0, 1 },
+        },
+    };
+}
+
+fn projectMat4(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) zlm.Mat4 {
+    const width = right - left;
+    const height = top - bottom;
+    const depth = near - far;
+    return .{
+        .fields = [4][4]f32{
+            [4]f32{ 2 / width, 0, 0, (left + right) / (left - right) },
+            [4]f32{ 0, 2 / height, 0, (bottom + top) / (bottom - top) },
+            [4]f32{ 0, 0, 2 / depth, (near + far) / (near - far) },
             [4]f32{ 0, 0, 0, 1 },
         },
     };
