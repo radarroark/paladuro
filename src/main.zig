@@ -511,10 +511,8 @@ fn CompiledEntity(comptime UniT: type, comptime AttrT: type) type {
         program: c.GLuint,
         vao: c.GLuint,
 
-        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) [2]usize {
-            const divisor = attr.divisor;
-            const draw_count = setProgramAttribute(self.program, attr_name, T, attr);
-            return .{ divisor, draw_count };
+        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) usize {
+            return setProgramAttribute(self.program, attr_name, T, attr);
         }
     };
 }
@@ -537,8 +535,8 @@ fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
         }
 
         fn setBuffer(self: *ArrayEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
-            const divisor, const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
-            if (divisor == 0) {
+            const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
+            if (attr.divisor == 0) {
                 self.draw_count = draw_count;
             }
             attr.buffer.disable = true;
