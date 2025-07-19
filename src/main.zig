@@ -24,6 +24,7 @@ export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, actio
 const Game = struct {
     tiles_texture: Texture(c.GLubyte),
     uncompiled_entity: UncompiledInstancedThreeDTextureEntity,
+    tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
 
     fn init(allocator: std.mem.Allocator) !Game {
         c.glEnable(c.GL_BLEND);
@@ -53,18 +54,65 @@ const Game = struct {
         base_entity.setTile(2, 0 * tile_size, 3 * tile_size, tile_size, tile_size); // water
         base_entity.setTile(3, 4 * tile_size, 0 * tile_size, tile_size, tile_size); // stone
 
-        var uncompiled_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, 9 * 9);
+        const grid_width = 10;
+        const grid_height = 10;
+
+        var uncompiled_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
         errdefer uncompiled_entity.deinit(allocator);
+
+        var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
+        errdefer tiles_to_pixels.deinit(allocator);
+
+        const hexagon_size: c.GLfloat = 70;
+        for (0..grid_width) |x| {
+            for (0..grid_height) |y| {
+                var e = base_entity;
+                const xx: c.GLfloat = @as(c.GLfloat, @floatFromInt(x)) * hexagon_size * 3 / 4 * 2;
+                const y_offset: c.GLfloat = if (@mod(x, 2) == 0) 0 else hexagon_size * @sin(std.math.pi / 3.0);
+                const yy: c.GLfloat = @as(c.GLfloat, @floatFromInt(y)) * hexagon_size * @sin(std.math.pi / 3.0) * 2 + y_offset;
+                e.translate(xx, 0, yy);
+                try tiles_to_pixels.put(allocator, .{ x, y }, .{ xx, yy });
+                e.scale(hexagon_size, hexagon_size, hexagon_size);
+                if (2 < x and x < 7 and 2 < y and y < 7) {
+                    e.setSide(.bottom, 2);
+                    if (x == 3) {
+                        e.setSide(.back_left, 3);
+                        e.setSide(.front_left, 3);
+                    } else if (x == 6) {
+                        e.setSide(.back_right, 3);
+                        e.setSide(.front_right, 3);
+                    }
+                    if (y == 3) {
+                        e.setSide(.front, 3);
+                        if (x % 2 == 0) {
+                            e.setSide(.front_left, 3);
+                            e.setSide(.front_right, 3);
+                        }
+                    } else if (y == 6) {
+                        e.setSide(.back, 3);
+                        if (x % 2 == 1) {
+                            e.setSide(.back_left, 3);
+                            e.setSide(.back_right, 3);
+                        }
+                    }
+                } else {
+                    e.setSide(.bottom, 1);
+                }
+                uncompiled_entity.set(x * y, e);
+            }
+        }
 
         return .{
             .tiles_texture = tiles_texture,
             .uncompiled_entity = uncompiled_entity,
+            .tiles_to_pixels = tiles_to_pixels,
         };
     }
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
         self.uncompiled_entity.deinit(allocator);
+        self.tiles_to_pixels.deinit(allocator);
     }
 
     fn tick(self: *Game) !void {
@@ -188,6 +236,20 @@ fn Buffer(comptime T: type) type {
         disable: bool = false,
         //buffer: c.GLuint,
         data: []T,
+
+        fn set(self: *Buffer(T), index: usize, uni: T) void {
+            self.data[index] = uni;
+            self.disable = false;
+        }
+
+        fn setMat4(self: *Buffer(f32), index: usize, uni: Uniform(zlm.Mat4)) void {
+            for (0..4) |row| {
+                for (0..4) |col| {
+                    self.data[row * 4 + col + index * 16] = uni.data.fields[row][col];
+                }
+                self.disable = false;
+            }
+        }
     };
 }
 
@@ -218,6 +280,8 @@ const ThreeDTextureEntity = ArrayEntity(ThreeDTextureEntityUniforms, ThreeDTextu
 
 const UncompiledThreeDTextureEntity = struct {
     uncompiled_entity: UncompiledEntity(ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes),
+
+    const Side = enum { back, back_right, front_right, front, front_left, back_left, bottom, top };
 
     fn init(
         allocator: std.mem.Allocator,
@@ -332,6 +396,18 @@ const UncompiledThreeDTextureEntity = struct {
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.data[index] = m;
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.disable = false;
     }
+
+    fn setSide(self: *UncompiledThreeDTextureEntity, side: Side, index: c.GLuint) void {
+        self.uncompiled_entity.entity.uniforms.u_tiles.data[@intFromEnum(side)] = index;
+    }
+
+    fn translate(self: *UncompiledThreeDTextureEntity, x: c.GLfloat, y: c.GLfloat, z: c.GLfloat) void {
+        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(x, y, z));
+    }
+
+    fn scale(self: *UncompiledThreeDTextureEntity, x: c.GLfloat, y: c.GLfloat, z: c.GLfloat) void {
+        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(scaleMat4(x, y, z));
+    }
 };
 
 fn translateMat3(x: f32, y: f32) zlm.Mat3 {
@@ -344,12 +420,34 @@ fn translateMat3(x: f32, y: f32) zlm.Mat3 {
     };
 }
 
+fn translateMat4(x: f32, y: f32, z: f32) zlm.Mat4 {
+    return .{
+        .fields = [4][4]f32{
+            [4]f32{ 1, 0, 0, x },
+            [4]f32{ 0, 1, 0, y },
+            [4]f32{ 0, 0, 1, z },
+            [4]f32{ 0, 0, 0, 1 },
+        },
+    };
+}
+
 fn scaleMat3(x: f32, y: f32) zlm.Mat3 {
     return .{
         .fields = [3][3]f32{
             [3]f32{ x, 0, 0 },
             [3]f32{ 0, y, 0 },
             [3]f32{ 0, 0, 1 },
+        },
+    };
+}
+
+fn scaleMat4(x: f32, y: f32, z: f32) zlm.Mat4 {
+    return .{
+        .fields = [4][4]f32{
+            [4]f32{ x, 0, 0, 0 },
+            [4]f32{ 0, y, 0, 0 },
+            [4]f32{ 0, 0, z, 0 },
+            [4]f32{ 0, 0, 0, 1 },
         },
     };
 }
@@ -496,7 +594,7 @@ const UncompiledInstancedThreeDTextureEntity = struct {
             },
         };
 
-        uncompiled_entity.entity.attributes.a_matrix.buffer.data = try allocator.alloc(c.GLfloat, count);
+        uncompiled_entity.entity.attributes.a_matrix.buffer.data = try allocator.alloc(c.GLfloat, count * 16);
         errdefer allocator.free(uncompiled_entity.entity.attributes.a_matrix.buffer.data);
 
         uncompiled_entity.entity.attributes.a_tile1.buffer.data = try allocator.alloc(c.GLuint, count);
@@ -543,6 +641,18 @@ const UncompiledInstancedThreeDTextureEntity = struct {
         allocator.free(self.uncompiled_entity.entity.attributes.a_tile7.buffer.data);
         allocator.free(self.uncompiled_entity.entity.attributes.a_tile8.buffer.data);
         allocator.free(self.uncompiled_entity.entity.uniforms.u_texture_matrix.data);
+    }
+
+    fn set(self: *UncompiledInstancedThreeDTextureEntity, index: usize, entity: UncompiledThreeDTextureEntity) void {
+        self.uncompiled_entity.entity.attributes.a_matrix.buffer.setMat4(index, entity.uncompiled_entity.entity.uniforms.u_matrix);
+        self.uncompiled_entity.entity.attributes.a_tile1.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[0]);
+        self.uncompiled_entity.entity.attributes.a_tile2.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[1]);
+        self.uncompiled_entity.entity.attributes.a_tile3.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[2]);
+        self.uncompiled_entity.entity.attributes.a_tile4.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[3]);
+        self.uncompiled_entity.entity.attributes.a_tile5.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[4]);
+        self.uncompiled_entity.entity.attributes.a_tile6.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[5]);
+        self.uncompiled_entity.entity.attributes.a_tile7.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[6]);
+        self.uncompiled_entity.entity.attributes.a_tile8.buffer.set(index, entity.uncompiled_entity.entity.uniforms.u_tiles.data[7]);
     }
 };
 
