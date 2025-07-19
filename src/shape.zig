@@ -1,12 +1,14 @@
 const std = @import("std");
 const zlm = @import("zlm");
 
-fn getX(n: f32) f32 {
-    return @cos((2 * std.math.pi * n) / 6);
+fn getX(n: f64) f32 {
+    const result: f64 = @cos((2 * std.math.pi * n) / 6.0);
+    return @floatCast(result);
 }
 
-fn getY(n: f32) f32 {
-    return @sin((2 * std.math.pi * n) / 6);
+fn getY(n: f64) f32 {
+    const result: f64 = @sin((2 * std.math.pi * n) / 6.0);
+    return @floatCast(result);
 }
 
 pub const hexagon = [_]f32{
