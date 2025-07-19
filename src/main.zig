@@ -42,6 +42,7 @@ export fn frameSizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int)
 
 const Game = struct {
     tiles_texture: Texture(c.GLubyte),
+    uncompiled_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
     player: Player = .{},
@@ -85,7 +86,7 @@ const Game = struct {
         const grid_height = 10;
 
         var instanced_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
-        defer instanced_entity.deinit(allocator);
+        errdefer instanced_entity.deinit(allocator);
 
         var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
@@ -131,6 +132,7 @@ const Game = struct {
 
         var self = Game{
             .tiles_texture = tiles_texture,
+            .uncompiled_entity = instanced_entity,
             .grid_entity = undefined,
             .tiles_to_pixels = tiles_to_pixels,
         };
@@ -142,6 +144,7 @@ const Game = struct {
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
+        self.uncompiled_entity.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
@@ -185,8 +188,9 @@ const Game = struct {
 
         inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.attributes)).@"struct".fields) |field| {
             @field(result.compiled_entity.entity.attributes, field.name).buffer.buffer = initBuffer();
-            result.setBuffers();
         }
+
+        result.setBuffers();
 
         inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
             if (!@field(result.compiled_entity.entity.uniforms, field.name).disable) {
@@ -228,7 +232,7 @@ const Game = struct {
             }
         }
 
-        //c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count));
+        c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count));
 
         c.glUseProgram(previous_program);
         c.glBindVertexArray(previous_vao);
@@ -333,7 +337,7 @@ fn getTypeEnum(comptime T: type) c.GLenum {
     };
 }
 
-fn setProgramAttribute(program: c.GLuint, attrib_name: []const u8, comptime T: type, attr: T) usize {
+fn setProgramAttribute(program: c.GLuint, attrib_name: []const u8, comptime T: type, attr: *T) usize {
     const total_size = @as(usize, @intCast(attr.size)) * attr.iter;
     const result: usize = attr.buffer.data.len / total_size;
     var previous_buffer: c.GLint = 0;
@@ -350,9 +354,22 @@ fn setProgramAttribute(program: c.GLuint, attrib_name: []const u8, comptime T: t
         const loc = attrib_location + @as(c.GLuint, @intCast(i));
         c.glEnableVertexAttribArray(loc);
         if (attr.InnerType == c.GLfloat) {
-            c.glVertexAttribPointer(loc, attr.size, kind, if (attr.normalize) 1 else 0, @intCast(@sizeOf(attr.InnerType) * total_size), @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))));
+            c.glVertexAttribPointer(
+                loc,
+                attr.size,
+                kind,
+                if (attr.normalize) 1 else 0,
+                @intCast(@sizeOf(attr.InnerType) * total_size),
+                @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))),
+            );
         } else {
-            c.glVertexAttribIPointer(loc, attr.size, kind, @intCast(@sizeOf(attr.InnerType) * total_size), @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))));
+            c.glVertexAttribIPointer(
+                loc,
+                attr.size,
+                kind,
+                @intCast(@sizeOf(attr.InnerType) * total_size),
+                @ptrFromInt(@sizeOf(attr.InnerType) * i * @as(c.GLuint, @intCast(attr.size))),
+            );
         }
         c.glVertexAttribDivisor(loc, attr.divisor);
     }
@@ -450,7 +467,7 @@ fn CompiledEntity(comptime UniT: type, comptime AttrT: type) type {
         program: c.GLuint,
         vao: c.GLuint,
 
-        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: T) [2]usize {
+        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) [2]usize {
             const divisor = attr.divisor;
             const draw_count = setProgramAttribute(self.program, attr_name, T, attr);
             return .{ divisor, draw_count };
@@ -476,7 +493,7 @@ fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
         }
 
         fn setBuffer(self: *ArrayEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
-            const divisor, const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr.*);
+            const divisor, const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
             if (divisor == 0) {
                 self.draw_count = draw_count;
             }
