@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const zlm = @import("zlm");
+const shape = @import("./shape.zig");
 
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_GLCOREARB", "1");
@@ -46,7 +47,7 @@ const Game = struct {
         );
         errdefer tiles_texture.deinit(allocator);
 
-        var base_entity = try UncompiledThreeDTextureEntity.init(allocator, &.{}, &.{}, &.{}, tiles_texture);
+        var base_entity = try UncompiledThreeDTextureEntity.init(allocator, &shape.hexagon, &shape.hexagon_texcoords, &shape.hexagon_sides, tiles_texture);
         defer base_entity.deinit(allocator);
 
         const tile_size: c.GLfloat = 32;
@@ -235,6 +236,8 @@ fn setProgramAttribute(program: c.GLuint, attrib_name: []const u8, comptime T: t
     c.glBindBuffer(c.GL_ARRAY_BUFFER, attr.buffer.buffer);
     if (attr.buffer.data.len > 0) {
         c.glBufferData(c.GL_ARRAY_BUFFER, @intCast(@sizeOf(attr.InnerType) * attr.buffer.data.len), &attr.buffer.data[0], c.GL_STATIC_DRAW);
+    } else {
+        unreachable;
     }
     const kind = getTypeEnum(attr.InnerType);
     const attrib_location: c.GLuint = @intCast(c.glGetAttribLocation(program, attrib_name.ptr));
@@ -440,9 +443,9 @@ const UncompiledThreeDTextureEntity = struct {
 
     fn init(
         allocator: std.mem.Allocator,
-        pos_data: []c.GLfloat,
-        texcoord_data: []c.GLfloat,
-        side_data: []c.GLuint,
+        pos_data: []const c.GLfloat,
+        texcoord_data: []const c.GLfloat,
+        side_data: []const c.GLuint,
         image: Texture(c.GLubyte),
     ) !UncompiledThreeDTextureEntity {
         const vertex_shader =
