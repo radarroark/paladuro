@@ -41,6 +41,7 @@ export fn frameSizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int)
 }
 
 const Game = struct {
+    tex_count: c.GLint = 0,
     tiles_texture: Texture(c.GLubyte),
     uncompiled_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
@@ -166,7 +167,7 @@ const Game = struct {
     }
 
     fn compile(
-        self: Game,
+        self: *Game,
         allocator: std.mem.Allocator,
         comptime CompiledT: type,
         comptime UniT: type,
@@ -196,6 +197,7 @@ const Game = struct {
             if (!@field(result.compiled_entity.entity.uniforms, field.name).disable) {
                 try self.callUniform(
                     allocator,
+                    false,
                     result.compiled_entity.program,
                     field.name,
                     @FieldType(@TypeOf(result.compiled_entity.entity.uniforms), field.name),
@@ -210,7 +212,7 @@ const Game = struct {
         return result;
     }
 
-    fn render(self: Game, allocator: std.mem.Allocator, comptime UniT: type, comptime AttrT: type, array_entity: *ArrayEntity(UniT, AttrT)) !void {
+    fn render(self: *Game, allocator: std.mem.Allocator, comptime UniT: type, comptime AttrT: type, array_entity: *ArrayEntity(UniT, AttrT)) !void {
         var previous_program: c.GLuint = 0;
         var previous_vao: c.GLuint = 0;
         c.glGetIntegerv(c.GL_CURRENT_PROGRAM, @ptrCast(&previous_program));
@@ -224,6 +226,7 @@ const Game = struct {
             if (!@field(array_entity.compiled_entity.entity.uniforms, field.name).disable) {
                 try self.callUniform(
                     allocator,
+                    true,
                     array_entity.compiled_entity.program,
                     field.name,
                     @FieldType(@TypeOf(array_entity.compiled_entity.entity.uniforms), field.name),
@@ -239,15 +242,14 @@ const Game = struct {
     }
 
     fn callUniform(
-        self: Game,
+        self: *Game,
         allocator: std.mem.Allocator,
+        compiled: bool,
         program: c.GLuint,
         uni_name: []const u8,
         comptime T: type,
         uni: *T,
     ) !void {
-        _ = self;
-
         switch (uni.InnerType) {
             zlm.Mat4 => {
                 const loc = c.glGetUniformLocation(program, uni_name.ptr);
@@ -257,9 +259,20 @@ const Game = struct {
                 uni.disable = true;
             },
             Texture(c.GLubyte) => {
-                const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                c.glUniform1i(loc, uni.data.unit);
-                uni.disable = true;
+                if (compiled) {
+                    const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                    if (loc == -1) unreachable;
+                    c.glUniform1i(loc, uni.data.unit);
+                    uni.disable = true;
+                } else {
+                    const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                    if (loc == -1) unreachable;
+                    const unit = self.createTexture(c.GLubyte, uni.data);
+                    uni.data.unit = unit;
+                    // TODO: we don't need to hold on to the texture anymore
+                    c.glUniform1i(loc, uni.data.unit);
+                    uni.disable = true;
+                }
             },
             []zlm.Mat3 => {
                 const loc = c.glGetUniformLocation(program, uni_name.ptr);
@@ -274,6 +287,37 @@ const Game = struct {
             },
             else => unreachable,
         }
+    }
+
+    fn createTexture(self: *Game, comptime T: type, texture: Texture(T)) c.GLint {
+        const unit = self.tex_count;
+        self.tex_count += 1;
+        var texture_num: c.GLuint = 0;
+        c.glGenTextures(1, &texture_num);
+        c.glActiveTexture(@intCast(c.GL_TEXTURE0 + unit));
+        c.glBindTexture(c.GL_TEXTURE_2D, texture_num);
+        for (texture.params) |param| {
+            c.glTexParameteri(c.GL_TEXTURE_2D, param[0], @intCast(param[1]));
+        }
+        for (texture.pixel_store_params) |param| {
+            c.glPixelStorei(param[0], @intCast(param[1]));
+        }
+        const src_type = getTypeEnum(T);
+        c.glTexImage2D(
+            c.GL_TEXTURE_2D,
+            texture.opts.mip_level,
+            @intCast(texture.opts.internal_fmt),
+            texture.opts.width,
+            texture.opts.height,
+            texture.opts.border,
+            texture.opts.src_fmt,
+            src_type,
+            &texture.image[0],
+        );
+        for (texture.mipmap_params) |param| {
+            c.glGenerateMipmap(param);
+        }
+        return unit;
     }
 };
 
