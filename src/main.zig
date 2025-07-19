@@ -135,7 +135,7 @@ const Game = struct {
             .tiles_to_pixels = tiles_to_pixels,
         };
 
-        self.grid_entity = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
+        self.grid_entity = try self.compile(allocator, InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
 
         return self;
     }
@@ -145,7 +145,7 @@ const Game = struct {
         self.tiles_to_pixels.deinit(allocator);
     }
 
-    fn tick(self: *Game) !void {
+    fn tick(self: *Game, allocator: std.mem.Allocator) !void {
         c.glClearColor(173.0 / 255.0, 216.0 / 255.0, 230.0 / 255.0, 1);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
         c.glViewport(0, 0, sizes.window_width, sizes.window_height);
@@ -159,9 +159,17 @@ const Game = struct {
         var e = self.grid_entity;
         e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
         e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
+        try self.render(allocator, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
     }
 
-    fn compile(self: Game, comptime CompiledT: type, comptime UniT: type, comptime AttrT: type, uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT)) !CompiledT {
+    fn compile(
+        self: Game,
+        allocator: std.mem.Allocator,
+        comptime CompiledT: type,
+        comptime UniT: type,
+        comptime AttrT: type,
+        uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT),
+    ) !CompiledT {
         var previous_program: c.GLuint = 0;
         var previous_vao: c.GLuint = 0;
         c.glGetIntegerv(c.GL_CURRENT_PROGRAM, @ptrCast(&previous_program));
@@ -182,13 +190,12 @@ const Game = struct {
 
         inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
             if (!@field(result.compiled_entity.entity.uniforms, field.name).disable) {
-                self.callUniform(
-                    UniT,
-                    AttrT,
-                    uncompiled_entity.entity,
+                try self.callUniform(
+                    allocator,
+                    result.compiled_entity.program,
                     field.name,
                     @FieldType(@TypeOf(result.compiled_entity.entity.uniforms), field.name),
-                    @field(result.compiled_entity.entity.uniforms, field.name),
+                    &@field(result.compiled_entity.entity.uniforms, field.name),
                 );
             }
         }
@@ -199,11 +206,70 @@ const Game = struct {
         return result;
     }
 
-    fn callUniform(self: Game, comptime UniT: type, comptime AttrT: type, entity: Entity(UniT, AttrT), uni_name: []const u8, comptime T: type, uni: T) void {
+    fn render(self: Game, allocator: std.mem.Allocator, comptime UniT: type, comptime AttrT: type, array_entity: *ArrayEntity(UniT, AttrT)) !void {
+        var previous_program: c.GLuint = 0;
+        var previous_vao: c.GLuint = 0;
+        c.glGetIntegerv(c.GL_CURRENT_PROGRAM, @ptrCast(&previous_program));
+        c.glGetIntegerv(c.GL_VERTEX_ARRAY_BINDING, @ptrCast(&previous_vao));
+
+        c.glUseProgram(array_entity.compiled_entity.program);
+        c.glBindVertexArray(array_entity.compiled_entity.vao);
+        array_entity.setBuffers();
+
+        inline for (@typeInfo(@TypeOf(array_entity.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
+            if (!@field(array_entity.compiled_entity.entity.uniforms, field.name).disable) {
+                try self.callUniform(
+                    allocator,
+                    array_entity.compiled_entity.program,
+                    field.name,
+                    @FieldType(@TypeOf(array_entity.compiled_entity.entity.uniforms), field.name),
+                    &@field(array_entity.compiled_entity.entity.uniforms, field.name),
+                );
+            }
+        }
+
+        //c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count));
+
+        c.glUseProgram(previous_program);
+        c.glBindVertexArray(previous_vao);
+    }
+
+    fn callUniform(
+        self: Game,
+        allocator: std.mem.Allocator,
+        program: c.GLuint,
+        uni_name: []const u8,
+        comptime T: type,
+        uni: *T,
+    ) !void {
         _ = self;
-        _ = entity;
-        _ = uni_name;
-        _ = uni;
+
+        switch (uni.InnerType) {
+            zlm.Mat4 => {
+                const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                if (loc == -1) unreachable;
+                var data = uni.data.transpose();
+                c.glUniformMatrix4fv(loc, 1, 0, @ptrCast(&data));
+                uni.disable = true;
+            },
+            Texture(c.GLubyte) => {
+                const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                c.glUniform1i(loc, uni.data.unit);
+                uni.disable = true;
+            },
+            []zlm.Mat3 => {
+                const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                if (loc == -1) unreachable;
+                var data = try allocator.dupe(zlm.Mat3, uni.data);
+                defer allocator.free(data);
+                for (data) |*m| {
+                    m.* = transposeMat3(m.*);
+                }
+                c.glUniformMatrix3fv(loc, @intCast(data.len), 0, @ptrCast(&data[0]));
+                uni.disable = true;
+            },
+            else => unreachable,
+        }
     }
 };
 
@@ -423,6 +489,8 @@ fn Uniform(comptime T: type) type {
     return struct {
         disable: bool = false,
         data: T,
+
+        comptime InnerType: type = T,
     };
 }
 
@@ -626,6 +694,16 @@ fn translateMat4(x: f32, y: f32, z: f32) zlm.Mat4 {
             [4]f32{ 0, 0, 0, 1 },
         },
     };
+}
+
+fn transposeMat3(a: zlm.Mat3) zlm.Mat3 {
+    var result: zlm.Mat3 = undefined;
+    inline for (0..3) |row| {
+        inline for (0..3) |col| {
+            result.fields[row][col] = a.fields[col][row];
+        }
+    }
+    return result;
 }
 
 fn scaleMat3(x: f32, y: f32) zlm.Mat3 {
@@ -938,7 +1016,7 @@ pub fn main() !void {
     defer game.deinit(allocator);
 
     while (c.glfwWindowShouldClose(window) != c.GLFW_TRUE) {
-        try game.tick();
+        try game.tick(allocator);
         c.glfwSwapBuffers(window);
         c.glfwPollEvents();
     }
