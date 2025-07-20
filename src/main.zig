@@ -311,7 +311,7 @@ const Game = struct {
         comptime CompiledT: type,
         comptime UniT: type,
         comptime AttrT: type,
-        uncompiled_entity: UncompiledEntity(CompiledT, UniT, AttrT),
+        uncompiled_entity: UncompiledEntity(UniT, AttrT),
     ) !CompiledT {
         var previous_program: c.GLuint = 0;
         var previous_vao: c.GLuint = 0;
@@ -636,8 +636,7 @@ fn Entity(comptime UniT: type, comptime AttrT: type) type {
     };
 }
 
-fn UncompiledEntity(comptime CompiledT: type, comptime UniT: type, comptime AttrT: type) type {
-    _ = CompiledT;
+fn UncompiledEntity(comptime UniT: type, comptime AttrT: type) type {
     return struct {
         entity: Entity(UniT, AttrT),
         vertex_source: []const u8,
@@ -774,7 +773,7 @@ const ThreeDTextureEntityAttributes = struct {
 const ThreeDTextureEntity = ArrayEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes);
 
 const UncompiledThreeDTextureEntity = struct {
-    uncompiled_entity: UncompiledEntity(ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes),
+    uncompiled_entity: UncompiledEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes),
 
     const Side = enum { back, back_right, front_right, front, front_left, back_left, bottom, top };
 
@@ -834,7 +833,7 @@ const UncompiledThreeDTextureEntity = struct {
         side.buffer.data = try allocator.dupe(c.GLuint, side_data);
         errdefer allocator.free(side.buffer.data);
 
-        var uncompiled_entity = UncompiledEntity(ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes){
+        var uncompiled_entity = UncompiledEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes){
             .vertex_source = vertex_shader,
             .fragment_source = fragment_shader,
             .entity = .{
@@ -1025,7 +1024,7 @@ const InstancedThreeDTextureEntityAttributes = struct {
 const InstancedThreeDTextureEntity = InstancedEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes);
 
 const UncompiledInstancedThreeDTextureEntity = struct {
-    uncompiled_entity: UncompiledEntity(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes),
+    uncompiled_entity: UncompiledEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes),
 
     fn init(allocator: std.mem.Allocator, base_entity: UncompiledThreeDTextureEntity, count: usize) !UncompiledInstancedThreeDTextureEntity {
         const vertex_shader =
@@ -1103,7 +1102,7 @@ const UncompiledInstancedThreeDTextureEntity = struct {
         side.buffer.data = try allocator.dupe(c.GLuint, base_entity.uncompiled_entity.entity.attributes.a_side.buffer.data);
         errdefer allocator.free(side.buffer.data);
 
-        var uncompiled_entity = UncompiledEntity(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes){
+        var uncompiled_entity = UncompiledEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes){
             .vertex_source = vertex_shader,
             .fragment_source = fragment_shader,
             .entity = .{
