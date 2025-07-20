@@ -43,7 +43,7 @@ export fn frameSizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int)
 const Game = struct {
     tex_count: c.GLint = 0,
     tiles_texture: Texture(c.GLubyte),
-    uncompiled_entity: UncompiledInstancedThreeDTextureEntity,
+    uncompiled_grid_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
     player: Player = .{},
@@ -86,8 +86,8 @@ const Game = struct {
         const grid_width = 10;
         const grid_height = 10;
 
-        var instanced_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
-        errdefer instanced_entity.deinit(allocator);
+        var uncompiled_grid_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
+        errdefer uncompiled_grid_entity.deinit(allocator);
 
         var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
@@ -127,25 +127,25 @@ const Game = struct {
                 } else {
                     e.setSide(.bottom, 1);
                 }
-                instanced_entity.set((x * grid_width) + y, e);
+                uncompiled_grid_entity.set((x * grid_width) + y, e);
             }
         }
 
         var self = Game{
             .tiles_texture = tiles_texture,
-            .uncompiled_entity = instanced_entity,
+            .uncompiled_grid_entity = uncompiled_grid_entity,
             .grid_entity = undefined,
             .tiles_to_pixels = tiles_to_pixels,
         };
 
-        self.grid_entity = try self.compile(allocator, InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, instanced_entity.uncompiled_entity);
+        self.grid_entity = try self.compile(allocator, InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, uncompiled_grid_entity.uncompiled_entity);
 
         return self;
     }
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
-        self.uncompiled_entity.deinit(allocator);
+        self.uncompiled_grid_entity.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
