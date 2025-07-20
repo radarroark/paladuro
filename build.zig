@@ -46,7 +46,10 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.root_module.addImport("zlm", b.dependency("zlm", .{}).module("zlm"));
     switch (builtin.os.tag) {
         .linux => step.linkSystemLibrary("GL"),
-        .windows => step.linkSystemLibrary("opengl32"),
+        .windows => {
+            step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
+            step.linkSystemLibrary("opengl32");
+        },
         else => @panic("must link opengl for this OS"),
     }
 }

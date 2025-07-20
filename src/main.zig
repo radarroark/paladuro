@@ -6,6 +6,9 @@ const shape = @import("./shape.zig");
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_GLCOREARB", "1");
     @cDefine("GL_GLEXT_PROTOTYPES", "1");
+    if (builtin.os.tag == .windows) {
+        @cInclude("glad/gl.h");
+    }
     @cInclude("GLFW/glfw3.h");
     @cInclude("GL/glcorearb.h");
     @cInclude("stb_image.h");
@@ -1216,6 +1219,12 @@ pub fn main() !void {
 
     _ = c.glfwSetKeyCallback(window, keyCallback);
     _ = c.glfwSetFramebufferSizeCallback(window, frameSizeCallback);
+
+    if (builtin.os.tag == .windows) {
+        if (c.gladLoadGL(c.glfwGetProcAddress) == 0) {
+            return error.FailedToLoadGlad;
+        }
+    }
 
     game = try Game.init(allocator);
     defer game.deinit(allocator);
