@@ -50,6 +50,10 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
             step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
             step.linkSystemLibrary("opengl32");
         },
+        .macos => {
+            step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
+            step.linkFramework("QuartzCore");
+        },
         else => @panic("must link opengl for this OS"),
     }
 }
