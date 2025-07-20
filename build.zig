@@ -42,18 +42,11 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.linkLibC();
     step.addIncludePath(b.path("deps/include"));
     step.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
+    step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
     step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
     step.root_module.addImport("zlm", b.dependency("zlm", .{}).module("zlm"));
     switch (builtin.os.tag) {
-        .linux => step.linkSystemLibrary("GL"),
-        .windows => {
-            step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
-            step.linkSystemLibrary("opengl32");
-        },
-        .macos => {
-            step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
-            step.linkFramework("QuartzCore");
-        },
-        else => @panic("must link opengl for this OS"),
+        .macos => step.linkFramework("QuartzCore"),
+        else => {},
     }
 }
