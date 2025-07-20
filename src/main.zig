@@ -45,6 +45,8 @@ const Game = struct {
     tiles_texture: Texture(c.GLubyte),
     uncompiled_grid_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
+    uncompiled_player_entity: UncompiledThreeDTextureEntity,
+    player_entity: ThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
     player: Player = .{},
 
@@ -55,12 +57,17 @@ const Game = struct {
         y_angle: f32 = 0,
     };
 
+    const tiles_image = @embedFile("assets/tiles.png");
+    const tile_size: c.GLfloat = 32;
+    const hexagon_size: c.GLfloat = 70;
+    const grid_width = 10;
+    const grid_height = 10;
+
     fn init(allocator: std.mem.Allocator) !Game {
         c.glEnable(c.GL_BLEND);
         c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glEnable(c.GL_DEPTH_TEST);
 
-        const tiles_image = @embedFile("assets/tiles.png");
         var tiles_texture = try Texture(c.GLubyte).init(
             allocator,
             tiles_image,
@@ -76,15 +83,11 @@ const Game = struct {
         errdefer tiles_texture.deinit(allocator);
 
         var base_entity = try UncompiledThreeDTextureEntity.init(allocator, &shape.hexagon, &shape.hexagon_texcoords, &shape.hexagon_sides, tiles_texture);
-        defer base_entity.deinit(allocator);
+        errdefer base_entity.deinit(allocator);
 
-        const tile_size: c.GLfloat = 32;
         base_entity.setTile(1, 3 * tile_size, 0 * tile_size, tile_size, tile_size); // gravel
         base_entity.setTile(2, 0 * tile_size, 3 * tile_size, tile_size, tile_size); // water
         base_entity.setTile(3, 4 * tile_size, 0 * tile_size, tile_size, tile_size); // stone
-
-        const grid_width = 10;
-        const grid_height = 10;
 
         var uncompiled_grid_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
         errdefer uncompiled_grid_entity.deinit(allocator);
@@ -92,7 +95,6 @@ const Game = struct {
         var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
 
-        const hexagon_size: c.GLfloat = 70;
         for (0..grid_width) |x| {
             for (0..grid_height) |y| {
                 var e = base_entity;
@@ -131,14 +133,21 @@ const Game = struct {
             }
         }
 
+        var uncompiled_player_entity = base_entity;
+        uncompiled_player_entity.scale(hexagon_size, hexagon_size, hexagon_size);
+        uncompiled_player_entity.setSide(.bottom, 2);
+
         var self = Game{
             .tiles_texture = tiles_texture,
             .uncompiled_grid_entity = uncompiled_grid_entity,
             .grid_entity = undefined,
+            .uncompiled_player_entity = uncompiled_player_entity,
+            .player_entity = undefined,
             .tiles_to_pixels = tiles_to_pixels,
         };
 
-        self.grid_entity = try self.compile(allocator, InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, uncompiled_grid_entity.uncompiled_entity);
+        //self.grid_entity = try self.compile(allocator, InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, uncompiled_grid_entity.uncompiled_entity);
+        self.player_entity = try self.compile(allocator, ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, uncompiled_player_entity.uncompiled_entity);
 
         return self;
     }
@@ -146,6 +155,7 @@ const Game = struct {
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
         self.uncompiled_grid_entity.deinit(allocator);
+        self.uncompiled_player_entity.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
@@ -160,10 +170,16 @@ const Game = struct {
         camera = camera.mul(rotateXMat4(degToRad(self.player.x_angle)));
         camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(sizes.world_height)) / 2.0, 0));
 
-        var e = self.grid_entity;
-        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
-        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
-        try self.render(allocator, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
+        //var e = self.grid_entity;
+        //e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
+        //e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
+        //try self.render(allocator, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
+
+        var p = self.player_entity;
+        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
+        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
+        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(@floatFromInt(self.player.x), -1 / hexagon_size, @floatFromInt(self.player.y)));
+        try self.render(allocator, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
     }
 
     fn compile(
@@ -235,7 +251,8 @@ const Game = struct {
             }
         }
 
-        c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count), @intCast(array_entity.instance_count));
+        c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count));
+        //c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(array_entity.draw_count), @intCast(array_entity.instance_count));
 
         c.glUseProgram(previous_program);
         c.glBindVertexArray(previous_vao);
@@ -283,6 +300,12 @@ const Game = struct {
                     m.* = transposeMat3(m.*);
                 }
                 c.glUniformMatrix3fv(loc, @intCast(data.len), 0, @ptrCast(&data[0]));
+                uni.disable = true;
+            },
+            []c.GLuint => {
+                const loc = c.glGetUniformLocation(program, uni_name.ptr);
+                if (loc == -1) unreachable;
+                c.glUniform1uiv(loc, @intCast(uni.data.len), &uni.data[0]);
                 uni.disable = true;
             },
             else => unreachable,
