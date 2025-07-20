@@ -11,13 +11,23 @@ const c = @cImport({
     @cInclude("stb_image.h");
 });
 
+var game: Game = undefined;
+
 export fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) void {
     _ = scancode;
     _ = mods;
 
     if (action == c.GLFW_RELEASE) {
-        if (key == c.GLFW_KEY_ESCAPE) {
-            c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
+        const x_angle_delta = 45.0 / 2.0;
+        const y_angle_delta = 60.0;
+        switch (key) {
+            c.GLFW_KEY_ESCAPE => c.glfwSetWindowShouldClose(window, c.GLFW_TRUE),
+            c.GLFW_KEY_W => game.player.x_angle_target -= x_angle_delta,
+            c.GLFW_KEY_S => game.player.x_angle_target += x_angle_delta,
+            c.GLFW_KEY_A, c.GLFW_KEY_LEFT => game.player.setNormalizedYAngle(game.player.y_angle_target - y_angle_delta),
+            c.GLFW_KEY_D, c.GLFW_KEY_RIGHT => game.player.setNormalizedYAngle(game.player.y_angle_target + y_angle_delta),
+            c.GLFW_KEY_UP, c.GLFW_KEY_DOWN => game.player.setTarget(key),
+            else => {},
         }
     }
 }
@@ -30,38 +40,138 @@ const Sizes = struct {
     world_height: c_int = 0,
 };
 
-var sizes: Sizes = .{};
+const Player = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+    x_target: f32 = 0,
+    y_target: f32 = 0,
+    x_tile: isize = 0,
+    y_tile: isize = 0,
+    x_angle: f32 = -45.0,
+    y_angle: f32 = 0,
+    x_angle_target: f32 = -45.0,
+    y_angle_target: f32 = 0,
+
+    fn setNormalizedYAngle(self: *Player, angle: f32) void {
+        if (angle == 360) {
+            self.y_angle = -60;
+            self.y_angle_target = 0;
+        } else if (angle == -60) {
+            self.y_angle = 360;
+            self.y_angle_target = 300;
+        } else {
+            self.y_angle_target = angle;
+        }
+    }
+
+    fn setTarget(self: *Player, key: c_int) void {
+        const x_direction: isize = 0;
+        const y_direction: isize =
+            switch (key) {
+                c.GLFW_KEY_UP => 1,
+                c.GLFW_KEY_DOWN => -1,
+                else => 0,
+            };
+
+        const x_tile_diff, const y_tile_diff =
+            if (self.y_angle_target == 0)
+                .{ x_direction, y_direction }
+            else if (self.y_angle_target == 60 and y_direction == 1)
+                .{ y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) 0 else y_direction }
+            else if (self.y_angle_target == 60 and y_direction == -1)
+                .{ y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) y_direction else 0 }
+            else if (self.y_angle_target == 120 and y_direction == 1)
+                .{ y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) -y_direction else 0 }
+            else if (self.y_angle_target == 120 and y_direction == -1)
+                .{ y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) 0 else -y_direction }
+            else if (self.y_angle_target == 180)
+                .{ -x_direction, -y_direction }
+            else if (self.y_angle_target == 240 and y_direction == 1)
+                .{ -y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) -y_direction else 0 }
+            else if (self.y_angle_target == 240 and y_direction == -1)
+                .{ -y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) 0 else -y_direction }
+            else if (self.y_angle_target == 300 and y_direction == 1)
+                .{ -y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) 0 else y_direction }
+            else if (self.y_angle_target == 300 and y_direction == -1)
+                .{ -y_direction, if (@mod(@as(f32, @floatFromInt(self.x_tile)), 2) == 0) y_direction else 0 }
+            else
+                .{ 0, 0 };
+
+        const tile: [2]isize = .{ self.x_tile + x_tile_diff, self.y_tile + y_tile_diff };
+        if (game.tiles_to_pixels.get(tile)) |pixels| {
+            self.x_tile = tile[0];
+            self.x_target = pixels[0];
+            self.y_tile = tile[1];
+            self.y_target = pixels[1];
+        }
+    }
+
+    fn moveToTarget(self: *Player, delta_time: f64, speed: f64) void {
+        if (self.x == self.x_target and self.y == self.y_target) return;
+        const min_diff = 1.0;
+        const xdiff = self.x_target - self.x;
+        const ydiff = self.y_target - self.y;
+        const new_x =
+            if (@abs(xdiff) < min_diff)
+                self.x_target
+            else
+                self.x + (xdiff * @min(1.0, delta_time * speed));
+        const new_y =
+            if (@abs(ydiff) < min_diff)
+                self.y_target
+            else
+                self.y + (ydiff * @min(1.0, delta_time * speed));
+        self.x = @floatCast(new_x);
+        self.y = @floatCast(new_y);
+    }
+
+    fn moveToTargetAngle(self: *Player, delta_time: f64, speed: f64) void {
+        if (self.x_angle == self.x_angle_target and self.y_angle == self.y_angle_target) return;
+        const min_diff = 1.0;
+        const xdiff = self.x_angle_target - self.x_angle;
+        const ydiff = self.y_angle_target - self.y_angle;
+        const new_x =
+            if (@abs(xdiff) < min_diff)
+                self.x_angle_target
+            else
+                self.x_angle + (xdiff * @min(1.0, delta_time * speed));
+        const new_y =
+            if (@abs(ydiff) < min_diff)
+                self.y_angle_target
+            else
+                self.y_angle + (ydiff * @min(1.0, delta_time * speed));
+        self.x_angle = @floatCast(new_x);
+        self.y_angle = @floatCast(new_y);
+    }
+};
 
 export fn frameSizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) void {
     _ = window;
-    sizes.window_width = width;
-    sizes.window_height = height;
-    sizes.world_width = @divTrunc(width, sizes.density);
-    sizes.world_height = @divTrunc(height, sizes.density);
+    game.sizes.window_width = width;
+    game.sizes.window_height = height;
+    game.sizes.world_width = @divTrunc(width, game.sizes.density);
+    game.sizes.world_height = @divTrunc(height, game.sizes.density);
 }
 
 const Game = struct {
+    delta_time: f64 = 0,
+    total_time: f64 = 0,
     tex_count: c.GLint = 0,
     tiles_texture: Texture(c.GLubyte),
     uncompiled_grid_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
     uncompiled_player_entity: UncompiledThreeDTextureEntity,
     player_entity: ThreeDTextureEntity,
-    tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat),
+    tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]isize, [2]c.GLfloat),
+    sizes: Sizes = .{},
     player: Player = .{},
-
-    const Player = struct {
-        x: usize = 0,
-        y: usize = 0,
-        x_angle: f32 = -45.0,
-        y_angle: f32 = 0,
-    };
 
     const tiles_image = @embedFile("assets/tiles.png");
     const tile_size: c.GLfloat = 32;
     const hexagon_size: c.GLfloat = 70;
     const grid_width = 10;
     const grid_height = 10;
+    const speed: f64 = 10;
 
     fn init(allocator: std.mem.Allocator) !Game {
         c.glEnable(c.GL_BLEND);
@@ -92,7 +202,7 @@ const Game = struct {
         var uncompiled_grid_entity = try UncompiledInstancedThreeDTextureEntity.init(allocator, base_entity, grid_width * grid_height);
         errdefer uncompiled_grid_entity.deinit(allocator);
 
-        var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]usize, [2]c.GLfloat){};
+        var tiles_to_pixels = std.AutoArrayHashMapUnmanaged([2]isize, [2]c.GLfloat){};
         errdefer tiles_to_pixels.deinit(allocator);
 
         for (0..grid_width) |x| {
@@ -107,7 +217,7 @@ const Game = struct {
                 const y_offset: c.GLfloat = if (@mod(x, 2) == 0) 0 else hexagon_size * @sin(std.math.pi / 3.0);
                 const yy: c.GLfloat = @as(c.GLfloat, @floatFromInt(y)) * hexagon_size * @sin(std.math.pi / 3.0) * 2 + y_offset;
                 e.translate(xx, 0, yy);
-                try tiles_to_pixels.put(allocator, .{ x, y }, .{ xx, yy });
+                try tiles_to_pixels.put(allocator, .{ @intCast(x), @intCast(y) }, .{ xx, yy });
                 e.scale(hexagon_size, hexagon_size, hexagon_size);
                 if (2 < x and x < 7 and 2 < y and y < 7) {
                     e.setSide(.bottom, 2);
@@ -167,24 +277,27 @@ const Game = struct {
     fn tick(self: *Game) !void {
         c.glClearColor(1, 1, 1, 1);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
-        c.glViewport(0, 0, sizes.window_width, sizes.window_height);
+        c.glViewport(0, 0, self.sizes.window_width, self.sizes.window_height);
+
+        self.player.moveToTarget(game.delta_time, speed);
+        self.player.moveToTargetAngle(game.delta_time, speed);
 
         var camera = zlm.Mat4.identity;
-        camera = camera.mul(translateMat4(@floatFromInt(self.player.x), 0, @floatFromInt(self.player.y)));
+        camera = camera.mul(translateMat4(self.player.x, 0, self.player.y));
         camera = camera.mul(rotateYMat4(degToRad(self.player.y_angle)));
         camera = camera.mul(rotateXMat4(degToRad(self.player.x_angle)));
-        camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(sizes.world_height)) / 2.0, 0));
+        camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(self.sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(self.sizes.world_height)) / 2.0, 0));
 
         var e = self.grid_entity;
-        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
+        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
         e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
         e.compiled_entity.entity.uniforms.u_matrix.disable = false;
         try self.render(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
 
         var p = self.player_entity;
-        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
+        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
         p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
-        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(@floatFromInt(self.player.x), -1 / hexagon_size, @floatFromInt(self.player.y)));
+        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(self.player.x, -1 / hexagon_size, self.player.y));
         p.compiled_entity.entity.uniforms.u_matrix.disable = false;
         try self.render(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
     }
@@ -1104,6 +1217,9 @@ pub fn main() !void {
     _ = c.glfwSetKeyCallback(window, keyCallback);
     _ = c.glfwSetFramebufferSizeCallback(window, frameSizeCallback);
 
+    game = try Game.init(allocator);
+    defer game.deinit(allocator);
+
     var width: c_int = 0;
     var height: c_int = 0;
     c.glfwGetFramebufferSize(window, &width, &height);
@@ -1112,13 +1228,13 @@ pub fn main() !void {
     var window_height: c_int = 0;
     c.glfwGetWindowSize(window, &window_width, &window_height);
 
-    sizes.density = @max(1, @divTrunc(width, window_width));
+    game.sizes.density = @max(1, @divTrunc(width, window_width));
     frameSizeCallback(window, width, height);
 
-    var game = try Game.init(allocator);
-    defer game.deinit(allocator);
-
     while (c.glfwWindowShouldClose(window) != c.GLFW_TRUE) {
+        const ts = c.glfwGetTime();
+        game.delta_time = ts - game.total_time;
+        game.total_time = ts;
         try game.tick();
         c.glfwSwapBuffers(window);
         c.glfwPollEvents();
