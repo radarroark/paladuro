@@ -179,6 +179,7 @@ const Game = struct {
         p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(sizes.world_width), @floatFromInt(sizes.world_height), 0, 2048, -2048));
         p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
         p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(@floatFromInt(self.player.x), -1 / hexagon_size, @floatFromInt(self.player.y)));
+        p.compiled_entity.entity.uniforms.u_matrix.disable = false;
         try self.render(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
     }
 
