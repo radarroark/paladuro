@@ -259,8 +259,8 @@ const Game = struct {
             .tiles_to_pixels = tiles_to_pixels,
         };
 
-        self.grid_entity = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, uncompiled_grid_entity.uncompiled_entity);
-        self.player_entity = try self.compile(ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, uncompiled_player_entity.uncompiled_entity);
+        self.grid_entity = try self.compile(InstancedThreeDTextureEntity, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &uncompiled_grid_entity.uncompiled_entity);
+        self.player_entity = try self.compile(ThreeDTextureEntity, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &uncompiled_player_entity.uncompiled_entity);
 
         return self;
     }
@@ -287,17 +287,17 @@ const Game = struct {
         camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(self.sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(self.sizes.world_height)) / 2.0, 0));
 
         var e = self.grid_entity;
-        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
-        e.compiled_entity.entity.uniforms.u_matrix.data = e.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
-        e.compiled_entity.entity.uniforms.u_matrix.disable = false;
-        try self.render(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
+        e.entity.uniforms.u_matrix.data = e.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
+        e.entity.uniforms.u_matrix.data = e.entity.uniforms.u_matrix.data.mul(camera.invert().?);
+        e.entity.uniforms.u_matrix.disable = false;
+        try self.render(.instanced, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
 
         var p = self.player_entity;
-        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
-        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(camera.invert().?);
-        p.compiled_entity.entity.uniforms.u_matrix.data = p.compiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(self.player.x, -1 / hexagon_size, self.player.y));
-        p.compiled_entity.entity.uniforms.u_matrix.disable = false;
-        try self.render(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
+        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
+        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(camera.invert().?);
+        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(translateMat4(self.player.x, -1 / hexagon_size, self.player.y));
+        p.entity.uniforms.u_matrix.disable = false;
+        try self.render(.array, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
     }
 
     fn compile(
@@ -305,7 +305,7 @@ const Game = struct {
         comptime CompiledT: type,
         comptime UniT: type,
         comptime AttrT: type,
-        uncompiled_entity: UncompiledEntity(UniT, AttrT),
+        uncompiled_entity: *const UncompiledEntity(UniT, AttrT),
     ) !CompiledT {
         var previous_program: c.GLuint = 0;
         var previous_vao: c.GLuint = 0;
@@ -313,27 +313,27 @@ const Game = struct {
         c.glGetIntegerv(c.GL_VERTEX_ARRAY_BINDING, @ptrCast(&previous_vao));
 
         var result: CompiledT = undefined;
-        result.compiled_entity.program = try createProgram(uncompiled_entity.vertex_source, uncompiled_entity.fragment_source);
-        c.glUseProgram(result.compiled_entity.program);
-        c.glGenVertexArrays(1, &result.compiled_entity.vao);
-        c.glBindVertexArray(result.compiled_entity.vao);
-        result.compiled_entity.entity.attributes = uncompiled_entity.entity.attributes;
-        result.compiled_entity.entity.uniforms = uncompiled_entity.entity.uniforms;
+        result.program = try createProgram(uncompiled_entity.vertex_source, uncompiled_entity.fragment_source);
+        c.glUseProgram(result.program);
+        c.glGenVertexArrays(1, &result.vao);
+        c.glBindVertexArray(result.vao);
+        result.entity.attributes = uncompiled_entity.entity.attributes;
+        result.entity.uniforms = uncompiled_entity.entity.uniforms;
 
-        inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.attributes)).@"struct".fields) |field| {
-            @field(result.compiled_entity.entity.attributes, field.name).buffer.buffer = initBuffer();
+        inline for (@typeInfo(@TypeOf(result.entity.attributes)).@"struct".fields) |field| {
+            @field(result.entity.attributes, field.name).buffer.buffer = initBuffer();
         }
 
         result.setBuffers();
 
-        inline for (@typeInfo(@TypeOf(result.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
-            if (!@field(result.compiled_entity.entity.uniforms, field.name).disable) {
+        inline for (@typeInfo(@TypeOf(result.entity.uniforms)).@"struct".fields) |field| {
+            if (!@field(result.entity.uniforms, field.name).disable) {
                 try self.callUniform(
                     false,
-                    result.compiled_entity.program,
+                    result.program,
                     field.name,
-                    @FieldType(@TypeOf(result.compiled_entity.entity.uniforms), field.name),
-                    &@field(result.compiled_entity.entity.uniforms, field.name),
+                    @FieldType(@TypeOf(result.entity.uniforms), field.name),
+                    &@field(result.entity.uniforms, field.name),
                 );
             }
         }
@@ -344,32 +344,37 @@ const Game = struct {
         return result;
     }
 
-    fn render(self: *Game, comptime UniT: type, comptime AttrT: type, entity: anytype) !void {
+    fn render(
+        self: *Game,
+        comptime entity_kind: CompiledEntityKind,
+        comptime UniT: type,
+        comptime AttrT: type,
+        compiled_entity: *CompiledEntity(entity_kind, UniT, AttrT),
+    ) !void {
         var previous_program: c.GLuint = 0;
         var previous_vao: c.GLuint = 0;
         c.glGetIntegerv(c.GL_CURRENT_PROGRAM, @ptrCast(&previous_program));
         c.glGetIntegerv(c.GL_VERTEX_ARRAY_BINDING, @ptrCast(&previous_vao));
 
-        c.glUseProgram(entity.compiled_entity.program);
-        c.glBindVertexArray(entity.compiled_entity.vao);
-        entity.setBuffers();
+        c.glUseProgram(compiled_entity.program);
+        c.glBindVertexArray(compiled_entity.vao);
+        compiled_entity.setBuffers();
 
-        inline for (@typeInfo(@TypeOf(entity.compiled_entity.entity.uniforms)).@"struct".fields) |field| {
-            if (!@field(entity.compiled_entity.entity.uniforms, field.name).disable) {
+        inline for (@typeInfo(@TypeOf(compiled_entity.entity.uniforms)).@"struct".fields) |field| {
+            if (!@field(compiled_entity.entity.uniforms, field.name).disable) {
                 try self.callUniform(
                     true,
-                    entity.compiled_entity.program,
+                    compiled_entity.program,
                     field.name,
-                    @FieldType(@TypeOf(entity.compiled_entity.entity.uniforms), field.name),
-                    &@field(entity.compiled_entity.entity.uniforms, field.name),
+                    @FieldType(@TypeOf(compiled_entity.entity.uniforms), field.name),
+                    &@field(compiled_entity.entity.uniforms, field.name),
                 );
             }
         }
 
-        switch (@TypeOf(entity)) {
-            *ArrayEntity(UniT, AttrT) => c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(entity.draw_count)),
-            *InstancedEntity(UniT, AttrT) => c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(entity.draw_count), @intCast(entity.instance_count)),
-            else => unreachable,
+        switch (entity_kind) {
+            .array => c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(compiled_entity.extra.draw_count)),
+            .instanced => c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(compiled_entity.extra.draw_count), @intCast(compiled_entity.extra.instance_count)),
         }
 
         c.glUseProgram(previous_program);
@@ -638,69 +643,49 @@ fn UncompiledEntity(comptime UniT: type, comptime AttrT: type) type {
     };
 }
 
-fn CompiledEntity(comptime UniT: type, comptime AttrT: type) type {
+const CompiledEntityKind = enum {
+    array,
+    instanced,
+};
+
+fn CompiledEntity(comptime entity_kind: CompiledEntityKind, comptime UniT: type, comptime AttrT: type) type {
     return struct {
         entity: Entity(UniT, AttrT),
         program: c.GLuint,
         vao: c.GLuint,
+        extra: switch (entity_kind) {
+            .array => struct {
+                draw_count: usize,
+            },
+            .instanced => struct {
+                draw_count: usize,
+                instance_count: usize,
+            },
+        },
 
-        fn setAttribute(self: CompiledEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) usize {
-            return setProgramAttribute(self.program, attr_name, T, attr);
-        }
-    };
-}
-
-fn ArrayEntity(comptime UniT: type, comptime AttrT: type) type {
-    return struct {
-        compiled_entity: CompiledEntity(UniT, AttrT),
-        draw_count: usize,
-
-        fn setBuffers(self: *ArrayEntity(UniT, AttrT)) void {
-            inline for (@typeInfo(@TypeOf(self.compiled_entity.entity.attributes)).@"struct".fields) |field| {
-                if (!@field(self.compiled_entity.entity.attributes, field.name).buffer.disable) {
+        fn setBuffers(self: *CompiledEntity(entity_kind, UniT, AttrT)) void {
+            inline for (@typeInfo(@TypeOf(self.entity.attributes)).@"struct".fields) |field| {
+                if (!@field(self.entity.attributes, field.name).buffer.disable) {
                     self.setBuffer(
                         field.name,
-                        @FieldType(@TypeOf(self.compiled_entity.entity.attributes), field.name),
-                        &@field(self.compiled_entity.entity.attributes, field.name),
+                        @FieldType(@TypeOf(self.entity.attributes), field.name),
+                        &@field(self.entity.attributes, field.name),
                     );
                 }
             }
         }
 
-        fn setBuffer(self: *ArrayEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
-            const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
-            if (attr.divisor == 0) {
-                self.draw_count = draw_count;
-            }
-            attr.buffer.disable = true;
-        }
-    };
-}
-
-fn InstancedEntity(comptime UniT: type, comptime AttrT: type) type {
-    return struct {
-        compiled_entity: CompiledEntity(UniT, AttrT),
-        draw_count: usize,
-        instance_count: usize,
-
-        fn setBuffers(self: *InstancedEntity(UniT, AttrT)) void {
-            inline for (@typeInfo(@TypeOf(self.compiled_entity.entity.attributes)).@"struct".fields) |field| {
-                if (!@field(self.compiled_entity.entity.attributes, field.name).buffer.disable) {
-                    self.setBuffer(
-                        field.name,
-                        @FieldType(@TypeOf(self.compiled_entity.entity.attributes), field.name),
-                        &@field(self.compiled_entity.entity.attributes, field.name),
-                    );
-                }
-            }
-        }
-
-        fn setBuffer(self: *InstancedEntity(UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
-            const draw_count = self.compiled_entity.setAttribute(attr_name, T, attr);
-            if (attr.divisor == 0) {
-                self.draw_count = draw_count;
-            } else if (attr.divisor == 1) {
-                self.instance_count = draw_count;
+        fn setBuffer(self: *CompiledEntity(entity_kind, UniT, AttrT), attr_name: []const u8, comptime T: type, attr: *T) void {
+            const draw_count = setProgramAttribute(self.program, attr_name, T, attr);
+            switch (entity_kind) {
+                .array => switch (attr.divisor) {
+                    0 => self.extra.draw_count = draw_count,
+                    1 => unreachable,
+                },
+                .instanced => switch (attr.divisor) {
+                    0 => self.extra.draw_count = draw_count,
+                    1 => self.extra.instance_count = draw_count,
+                },
             }
             attr.buffer.disable = true;
         }
@@ -764,7 +749,7 @@ const ThreeDTextureEntityAttributes = struct {
     a_side: Attribute(c.GLuint),
 };
 
-const ThreeDTextureEntity = ArrayEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes);
+const ThreeDTextureEntity = CompiledEntity(.array, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes);
 
 const UncompiledThreeDTextureEntity = struct {
     uncompiled_entity: UncompiledEntity(ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes),
@@ -1015,7 +1000,7 @@ const InstancedThreeDTextureEntityAttributes = struct {
     a_tile8: Attribute(c.GLuint),
 };
 
-const InstancedThreeDTextureEntity = InstancedEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes);
+const InstancedThreeDTextureEntity = CompiledEntity(.instanced, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes);
 
 const UncompiledInstancedThreeDTextureEntity = struct {
     uncompiled_entity: UncompiledEntity(InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes),
