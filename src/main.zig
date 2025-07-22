@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const zlm = @import("zlm");
+const zlm = @import("./zlm.zig").SpecializeOn(f32);
 const shape = @import("./shape.zig");
 
 const c = @cImport({

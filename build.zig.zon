@@ -6,10 +6,6 @@
             .url = "git+https://github.com/allyourcodebase/glfw#98607df9bce062c7fd837d58fafa06dae22edb04",
             .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
         },
-        .zlm = .{
-            .url = "git+https://github.com/ziglibs/zlm#e4dc388f2ce73d0734867c5baa9e9a5c84238ca4",
-            .hash = "zlm-0.1.0-AAAAAB6gAABdoukNmdFJDjSeVeSt8trl5EKm8TOcJqQs",
-        },
     },
     .paths = .{
         "build.zig",

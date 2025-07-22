@@ -44,7 +44,6 @@ fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
     step.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
     step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
     step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
-    step.root_module.addImport("zlm", b.dependency("zlm", .{}).module("zlm"));
     switch (builtin.os.tag) {
         .macos => step.linkFramework("QuartzCore"),
         else => {},
