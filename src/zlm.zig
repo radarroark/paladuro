@@ -77,7 +77,7 @@ pub fn SpecializeOn(comptime Real: type) type {
                 pub fn neg(self: Self) Self {
                     var result: Self = undefined;
                     inline for (@typeInfo(Self).@"struct".fields) |fld| {
-                        @field(result, fld.name) = - @field(self, fld.name);
+                        @field(result, fld.name) = -@field(self, fld.name);
                     }
                     return result;
                 }
@@ -194,7 +194,7 @@ pub fn SpecializeOn(comptime Real: type) type {
                 }
 
                 /// returns a new vector where each component is clamped to the given range.
-                /// `min` and `max` must be of the same type as the vector, and every field of 
+                /// `min` and `max` must be of the same type as the vector, and every field of
                 /// `min` must be smaller or equal to the corresponding field of `max`.
                 pub fn componentClamp(a: Self, min: Self, max: Self) Self {
                     var result: Self = undefined;
@@ -482,6 +482,40 @@ pub fn SpecializeOn(comptime Real: type) type {
                     [3]Real{ 0, 0, 1 },
                 },
             };
+
+            pub fn initTranslate(x: Real, y: Real) Mat3 {
+                return .{
+                    .fields = [3][3]Real{
+                        [3]Real{ 1, 0, x },
+                        [3]Real{ 0, 1, y },
+                        [3]Real{ 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn initScale(x: Real, y: Real) Mat3 {
+                return .{
+                    .fields = [3][3]Real{
+                        [3]Real{ x, 0, 0 },
+                        [3]Real{ 0, y, 0 },
+                        [3]Real{ 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn mul(a: Mat3, b: Mat3) Mat3 {
+                var result: Mat3 = undefined;
+                inline for (0..3) |row| {
+                    inline for (0..3) |col| {
+                        var sum: Real = 0.0;
+                        inline for (0..3) |i| {
+                            sum += a.fields[row][i] * b.fields[i][col];
+                        }
+                        result.fields[row][col] = sum;
+                    }
+                }
+                return result;
+            }
         };
 
         /// 4 by 4 matrix type.
@@ -518,6 +552,68 @@ pub fn SpecializeOn(comptime Real: type) type {
                 }
 
                 try stream.writeAll(" }");
+            }
+
+            pub fn initTranslate(x: Real, y: Real, z: Real) Mat4 {
+                return .{
+                    .fields = [4][4]Real{
+                        [4]Real{ 1, 0, 0, x },
+                        [4]Real{ 0, 1, 0, y },
+                        [4]Real{ 0, 0, 1, z },
+                        [4]Real{ 0, 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn initScale(x: Real, y: Real, z: Real) Mat4 {
+                return .{
+                    .fields = [4][4]Real{
+                        [4]Real{ x, 0, 0, 0 },
+                        [4]Real{ 0, y, 0, 0 },
+                        [4]Real{ 0, 0, z, 0 },
+                        [4]Real{ 0, 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn initRotateX(angle: Real) Mat4 {
+                const cos = @cos(angle);
+                const sin = @sin(angle);
+                return .{
+                    .fields = [4][4]Real{
+                        [4]Real{ 1, 0, 0, 0 },
+                        [4]Real{ 0, cos, -sin, 0 },
+                        [4]Real{ 0, sin, cos, 0 },
+                        [4]Real{ 0, 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn initRotateY(angle: Real) Mat4 {
+                const cos = @cos(angle);
+                const sin = @sin(angle);
+                return .{
+                    .fields = [4][4]Real{
+                        [4]Real{ cos, 0, sin, 0 },
+                        [4]Real{ 0, 1, 0, 0 },
+                        [4]Real{ -sin, 0, cos, 0 },
+                        [4]Real{ 0, 0, 0, 1 },
+                    },
+                };
+            }
+
+            pub fn initOrthoProject(left: Real, right: Real, bottom: Real, top: Real, near: Real, far: Real) Mat4 {
+                const width = right - left;
+                const height = top - bottom;
+                const depth = near - far;
+                return .{
+                    .fields = [4][4]Real{
+                        [4]Real{ 2 / width, 0, 0, (left + right) / (left - right) },
+                        [4]Real{ 0, 2 / height, 0, (bottom + top) / (bottom - top) },
+                        [4]Real{ 0, 0, 2 / depth, (near + far) / (near - far) },
+                        [4]Real{ 0, 0, 0, 1 },
+                    },
+                };
             }
 
             /// performs matrix multiplication of a*b
@@ -566,11 +662,11 @@ pub fn SpecializeOn(comptime Real: type) type {
                 result.fields[0][1] = u.x;
                 result.fields[1][1] = u.y;
                 result.fields[2][1] = u.z;
-                result.fields[0][2] = - f.x;
-                result.fields[1][2] = - f.y;
-                result.fields[2][2] = - f.z;
-                result.fields[3][0] = - Vec3.dot(s, eye);
-                result.fields[3][1] = - Vec3.dot(u, eye);
+                result.fields[0][2] = -f.x;
+                result.fields[1][2] = -f.y;
+                result.fields[2][2] = -f.z;
+                result.fields[3][0] = -Vec3.dot(s, eye);
+                result.fields[3][1] = -Vec3.dot(u, eye);
                 result.fields[3][2] = Vec3.dot(f, eye);
                 return result;
             }
@@ -598,9 +694,9 @@ pub fn SpecializeOn(comptime Real: type) type {
                 var result = Self.zero;
                 result.fields[0][0] = 1.0 / (aspect * tanHalfFovy);
                 result.fields[1][1] = 1.0 / (tanHalfFovy);
-                result.fields[2][2] = - (far + near) / (far - near);
-                result.fields[2][3] = - 1;
-                result.fields[3][2] = - (2 * far * near) / (far - near);
+                result.fields[2][2] = -(far + near) / (far - near);
+                result.fields[2][3] = -1;
+                result.fields[3][2] = -(2 * far * near) / (far - near);
                 return result;
             }
 
@@ -614,12 +710,12 @@ pub fn SpecializeOn(comptime Real: type) type {
                 const y = normalized.y;
                 const z = normalized.z;
 
-                return Self{    
+                return Self{
                     .fields = [4][4]Real{
-                        [4]Real{ cos + x * x * (1 - cos),       x * y * (1 - cos) + z * sin,    x * z * (1 - cos) - y * sin, 0 },
-                        [4]Real{ y * x * (1 - cos) - z * sin,   cos + y * y * (1 - cos),        y * z * (1 - cos) + x * sin, 0 },
-                        [4]Real{ z * x * (1 - cos) + y * sin,   z * y * (1 - cos) - x * sin,    cos + z * z * (1 - cos),     0 },
-                        [4]Real{ 0,                             0,                              0,                           1 },
+                        [4]Real{ cos + x * x * (1 - cos), x * y * (1 - cos) + z * sin, x * z * (1 - cos) - y * sin, 0 },
+                        [4]Real{ y * x * (1 - cos) - z * sin, cos + y * y * (1 - cos), y * z * (1 - cos) + x * sin, 0 },
+                        [4]Real{ z * x * (1 - cos) + y * sin, z * y * (1 - cos) - x * sin, cos + z * z * (1 - cos), 0 },
+                        [4]Real{ 0, 0, 0, 1 },
                     },
                 };
             }
@@ -672,10 +768,10 @@ pub fn SpecializeOn(comptime Real: type) type {
                 var result = Self.identity;
                 result.fields[0][0] = 2 / (right - left);
                 result.fields[1][1] = 2 / (top - bottom);
-                result.fields[2][2] = - 2 / (far - near);
-                result.fields[3][0] = - (right + left) / (right - left);
-                result.fields[3][1] = - (top + bottom) / (top - bottom);
-                result.fields[3][2] = - (far + near) / (far - near);
+                result.fields[2][2] = -2 / (far - near);
+                result.fields[3][0] = -(right + left) / (right - left);
+                result.fields[3][1] = -(top + bottom) / (top - bottom);
+                result.fields[3][2] = -(far + near) / (far - near);
                 return result;
             }
 

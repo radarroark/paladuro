@@ -281,21 +281,21 @@ const Game = struct {
         self.player.moveToTargetAngle(game.delta_time, speed);
 
         var camera = zlm.Mat4.identity;
-        camera = camera.mul(translateMat4(self.player.x, 0, self.player.y));
-        camera = camera.mul(rotateYMat4(degToRad(self.player.y_angle)));
-        camera = camera.mul(rotateXMat4(degToRad(self.player.x_angle)));
-        camera = camera.mul(translateMat4(-@as(f32, @floatFromInt(self.sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(self.sizes.world_height)) / 2.0, 0));
+        camera = camera.mul(zlm.Mat4.initTranslate(self.player.x, 0, self.player.y));
+        camera = camera.mul(zlm.Mat4.initRotateY(degToRad(self.player.y_angle)));
+        camera = camera.mul(zlm.Mat4.initRotateX(degToRad(self.player.x_angle)));
+        camera = camera.mul(zlm.Mat4.initTranslate(-@as(f32, @floatFromInt(self.sizes.world_width)) / 2.0, -@as(f32, @floatFromInt(self.sizes.world_height)) / 2.0, 0));
 
         var e = self.grid_entity;
-        e.entity.uniforms.u_matrix.data = e.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
+        e.entity.uniforms.u_matrix.data = e.entity.uniforms.u_matrix.data.mul(zlm.Mat4.initOrthoProject(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
         e.entity.uniforms.u_matrix.data = e.entity.uniforms.u_matrix.data.mul(camera.invert().?);
         e.entity.uniforms.u_matrix.disable = false;
         try self.render(.instanced, InstancedThreeDTextureEntityUniforms, InstancedThreeDTextureEntityAttributes, &e);
 
         var p = self.player_entity;
-        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(projectMat4(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
+        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(zlm.Mat4.initOrthoProject(0, @floatFromInt(self.sizes.world_width), @floatFromInt(self.sizes.world_height), 0, 2048, -2048));
         p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(camera.invert().?);
-        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(translateMat4(self.player.x, -1 / hexagon_size, self.player.y));
+        p.entity.uniforms.u_matrix.data = p.entity.uniforms.u_matrix.data.mul(zlm.Mat4.initTranslate(self.player.x, -1 / hexagon_size, self.player.y));
         p.entity.uniforms.u_matrix.disable = false;
         try self.render(.array, ThreeDTextureEntityUniforms, ThreeDTextureEntityAttributes, &p);
     }
@@ -864,8 +864,8 @@ const UncompiledThreeDTextureEntity = struct {
     ) void {
         const tex_width: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.width);
         const tex_height: c.GLfloat = @floatFromInt(self.uncompiled_entity.entity.uniforms.u_texture.data.opts.height);
-        var m = translateMat3(x / tex_width, y / tex_height);
-        m = mulMat3(m, scaleMat3(width / tex_width, height / tex_height));
+        var m = zlm.Mat3.initTranslate(x / tex_width, y / tex_height);
+        m = m.mul(zlm.Mat3.initScale(width / tex_width, height / tex_height));
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.data[index] = m;
         self.uncompiled_entity.entity.uniforms.u_texture_matrix.disable = false;
     }
@@ -875,109 +875,13 @@ const UncompiledThreeDTextureEntity = struct {
     }
 
     fn translate(self: *UncompiledThreeDTextureEntity, x: c.GLfloat, y: c.GLfloat, z: c.GLfloat) void {
-        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(translateMat4(x, y, z));
+        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(zlm.Mat4.initTranslate(x, y, z));
     }
 
     fn scale(self: *UncompiledThreeDTextureEntity, x: c.GLfloat, y: c.GLfloat, z: c.GLfloat) void {
-        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(scaleMat4(x, y, z));
+        self.uncompiled_entity.entity.uniforms.u_matrix.data = self.uncompiled_entity.entity.uniforms.u_matrix.data.mul(zlm.Mat4.initScale(x, y, z));
     }
 };
-
-fn translateMat3(x: f32, y: f32) zlm.Mat3 {
-    return .{
-        .fields = [3][3]f32{
-            [3]f32{ 1, 0, x },
-            [3]f32{ 0, 1, y },
-            [3]f32{ 0, 0, 1 },
-        },
-    };
-}
-
-fn translateMat4(x: f32, y: f32, z: f32) zlm.Mat4 {
-    return .{
-        .fields = [4][4]f32{
-            [4]f32{ 1, 0, 0, x },
-            [4]f32{ 0, 1, 0, y },
-            [4]f32{ 0, 0, 1, z },
-            [4]f32{ 0, 0, 0, 1 },
-        },
-    };
-}
-
-fn scaleMat3(x: f32, y: f32) zlm.Mat3 {
-    return .{
-        .fields = [3][3]f32{
-            [3]f32{ x, 0, 0 },
-            [3]f32{ 0, y, 0 },
-            [3]f32{ 0, 0, 1 },
-        },
-    };
-}
-
-fn scaleMat4(x: f32, y: f32, z: f32) zlm.Mat4 {
-    return .{
-        .fields = [4][4]f32{
-            [4]f32{ x, 0, 0, 0 },
-            [4]f32{ 0, y, 0, 0 },
-            [4]f32{ 0, 0, z, 0 },
-            [4]f32{ 0, 0, 0, 1 },
-        },
-    };
-}
-
-fn mulMat3(a: zlm.Mat3, b: zlm.Mat3) zlm.Mat3 {
-    var result: zlm.Mat3 = undefined;
-    inline for (0..3) |row| {
-        inline for (0..3) |col| {
-            var sum: f32 = 0.0;
-            inline for (0..3) |i| {
-                sum += a.fields[row][i] * b.fields[i][col];
-            }
-            result.fields[row][col] = sum;
-        }
-    }
-    return result;
-}
-
-fn rotateXMat4(angle: f32) zlm.Mat4 {
-    const cos = @cos(angle);
-    const sin = @sin(angle);
-    return .{
-        .fields = [4][4]f32{
-            [4]f32{ 1, 0, 0, 0 },
-            [4]f32{ 0, cos, -sin, 0 },
-            [4]f32{ 0, sin, cos, 0 },
-            [4]f32{ 0, 0, 0, 1 },
-        },
-    };
-}
-
-fn rotateYMat4(angle: f32) zlm.Mat4 {
-    const cos = @cos(angle);
-    const sin = @sin(angle);
-    return .{
-        .fields = [4][4]f32{
-            [4]f32{ cos, 0, sin, 0 },
-            [4]f32{ 0, 1, 0, 0 },
-            [4]f32{ -sin, 0, cos, 0 },
-            [4]f32{ 0, 0, 0, 1 },
-        },
-    };
-}
-
-fn projectMat4(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) zlm.Mat4 {
-    const width = right - left;
-    const height = top - bottom;
-    const depth = near - far;
-    return .{
-        .fields = [4][4]f32{
-            [4]f32{ 2 / width, 0, 0, (left + right) / (left - right) },
-            [4]f32{ 0, 2 / height, 0, (bottom + top) / (bottom - top) },
-            [4]f32{ 0, 0, 2 / depth, (near + far) / (near - far) },
-            [4]f32{ 0, 0, 0, 1 },
-        },
-    };
-}
 
 const InstancedThreeDTextureEntityUniforms = struct {
     u_matrix: Uniform(zlm.Mat4),
