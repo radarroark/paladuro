@@ -156,9 +156,7 @@ const Game = struct {
     total_time: f64 = 0,
     tex_count: c.GLint = 0,
     tiles_texture: Texture(c.GLubyte),
-    uncompiled_grid_entity: UncompiledInstancedThreeDTextureEntity,
     grid_entity: InstancedThreeDTextureEntity,
-    uncompiled_player_entity: UncompiledThreeDTextureEntity,
     player_entity: ThreeDTextureEntity,
     tiles_to_pixels: std.AutoArrayHashMapUnmanaged([2]isize, [2]c.GLfloat),
     sizes: Sizes = .{},
@@ -254,9 +252,7 @@ const Game = struct {
 
         var self = Game{
             .tiles_texture = tiles_texture,
-            .uncompiled_grid_entity = uncompiled_grid_entity,
             .grid_entity = undefined,
-            .uncompiled_player_entity = uncompiled_player_entity,
             .player_entity = undefined,
             .tiles_to_pixels = tiles_to_pixels,
         };
@@ -269,10 +265,10 @@ const Game = struct {
 
     fn deinit(self: *Game, allocator: std.mem.Allocator) void {
         self.tiles_texture.deinit(allocator);
-        self.uncompiled_grid_entity.uniforms.deinit(allocator);
-        self.uncompiled_grid_entity.attributes.deinit(allocator);
-        self.uncompiled_player_entity.uniforms.deinit(allocator);
-        self.uncompiled_player_entity.attributes.deinit(allocator);
+        self.grid_entity.uniforms.deinit(allocator);
+        self.grid_entity.attributes.deinit(allocator);
+        self.player_entity.uniforms.deinit(allocator);
+        self.player_entity.attributes.deinit(allocator);
         self.tiles_to_pixels.deinit(allocator);
     }
 
