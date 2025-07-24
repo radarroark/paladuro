@@ -206,11 +206,6 @@ const Game = struct {
         for (0..grid_width) |x| {
             for (0..grid_height) |y| {
                 var e = base_entity;
-
-                // duplicate tile data so base entity isn't mutated
-                e.uniforms.u_tiles.data = try allocator.dupe(c.GLuint, &.{ 0, 0, 0, 0, 0, 0, 0, 0 });
-                defer allocator.free(e.uniforms.u_tiles.data);
-
                 const xx: c.GLfloat = @as(c.GLfloat, @floatFromInt(x)) * hexagon_size * 3 / 4 * 2;
                 const y_offset: c.GLfloat = if (@mod(x, 2) == 0) 0 else hexagon_size * @sin(std.math.pi / 3.0);
                 const yy: c.GLfloat = @as(c.GLfloat, @floatFromInt(y)) * hexagon_size * @sin(std.math.pi / 3.0) * 2 + y_offset;
@@ -423,7 +418,7 @@ const Game = struct {
                 c.glUniformMatrix3fv(loc, @intCast(uni.data.len), c.GL_TRUE, @ptrCast(&uni.data[0]));
                 uni.disable = true;
             },
-            []c.GLuint => {
+            [8]c.GLuint => {
                 const loc = c.glGetUniformLocation(program, uni_name.ptr);
                 if (loc == -1) unreachable;
                 c.glUniform1uiv(loc, @intCast(uni.data.len), &uni.data[0]);
@@ -749,13 +744,12 @@ const ThreeDTextureEntityUniforms = struct {
     u_matrix: Uniform(zlm.Mat4),
     u_texture: Uniform(Texture(c.GLubyte)),
     u_texture_matrix: Uniform([]zlm.Mat3),
-    u_tiles: Uniform([]c.GLuint),
+    u_tiles: Uniform([8]c.GLuint),
 
     const Side = enum { back, back_right, front_right, front, front_left, back_left, bottom, top };
 
     fn deinit(self: *ThreeDTextureEntityUniforms, allocator: std.mem.Allocator) void {
         allocator.free(self.u_texture_matrix.data);
-        allocator.free(self.u_tiles.data);
     }
 
     fn setTile(
@@ -863,7 +857,7 @@ fn initThreeDTextureEntity(
             .u_matrix = .{ .data = zlm.Mat4.identity },
             .u_texture = .{ .data = image },
             .u_texture_matrix = .{ .data = undefined },
-            .u_tiles = .{ .data = undefined },
+            .u_tiles = .{ .data = .{ 0, 0, 0, 0, 0, 0, 0, 0 } },
         },
         .attributes = .{
             .a_position = position,
@@ -885,9 +879,6 @@ fn initThreeDTextureEntity(
     };
     result.uniforms.u_texture_matrix.data = try allocator.dupe(zlm.Mat3, &.{ zero, zero, zero, zero });
     errdefer allocator.free(result.uniforms.u_texture_matrix.data);
-
-    result.uniforms.u_tiles.data = try allocator.dupe(c.GLuint, &.{ 0, 0, 0, 0, 0, 0, 0, 0 });
-    errdefer allocator.free(result.uniforms.u_tiles.data);
 
     return result;
 }
