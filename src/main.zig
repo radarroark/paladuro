@@ -389,41 +389,43 @@ const Game = struct {
         comptime T: type,
         uni: *T,
     ) !void {
-        switch (uni.InnerType) {
-            zlm.Mat4 => {
-                const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                if (loc == -1) unreachable;
-                c.glUniformMatrix4fv(loc, 1, c.GL_TRUE, @ptrCast(&uni.data));
-                uni.disable = true;
-            },
+        const UniKind = enum { single, multiple };
+        const UniType: type, const uni_kind: UniKind, const uni_count: c.GLsizei =
+            switch (@typeInfo(uni.InnerType)) {
+                .@"struct" => .{ uni.InnerType, .single, 1 },
+                .array => |array| .{ array.child, .multiple, array.len },
+                .pointer => |pointer| switch (pointer.size) {
+                    .slice => .{ pointer.child, .multiple, @intCast(uni.data.len) },
+                    else => unreachable,
+                },
+                else => unreachable,
+            };
+        const uni_ptr: *UniType =
+            switch (uni_kind) {
+                .single => &uni.data,
+                .multiple => &uni.data[0],
+            };
+
+        const loc = c.glGetUniformLocation(program, uni_name.ptr);
+        if (loc == -1) unreachable;
+
+        uni.disable = true;
+
+        switch (UniType) {
+            zlm.Mat3 => c.glUniformMatrix3fv(loc, uni_count, c.GL_TRUE, @ptrCast(uni_ptr)),
+            zlm.Mat4 => c.glUniformMatrix4fv(loc, uni_count, c.GL_TRUE, @ptrCast(uni_ptr)),
             Texture(c.GLubyte) => {
+                if (uni_count != 1) unreachable;
                 if (compiled) {
-                    const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                    if (loc == -1) unreachable;
                     c.glUniform1i(loc, uni.data.unit);
-                    uni.disable = true;
                 } else {
-                    const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                    if (loc == -1) unreachable;
                     const unit = self.createTexture(c.GLubyte, uni.data);
                     uni.data.unit = unit;
                     // TODO: we don't need to hold on to the texture anymore
                     c.glUniform1i(loc, uni.data.unit);
-                    uni.disable = true;
                 }
             },
-            []zlm.Mat3 => {
-                const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                if (loc == -1) unreachable;
-                c.glUniformMatrix3fv(loc, @intCast(uni.data.len), c.GL_TRUE, @ptrCast(&uni.data[0]));
-                uni.disable = true;
-            },
-            [8]c.GLuint => {
-                const loc = c.glGetUniformLocation(program, uni_name.ptr);
-                if (loc == -1) unreachable;
-                c.glUniform1uiv(loc, @intCast(uni.data.len), &uni.data[0]);
-                uni.disable = true;
-            },
+            c.GLuint => c.glUniform1uiv(loc, uni_count, uni_ptr),
             else => unreachable,
         }
     }
