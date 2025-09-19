@@ -2,9 +2,9 @@
     .name = .paladuro,
     .version = "0.0.0",
     .dependencies = .{
-        .glfw = .{
-            .url = "git+https://github.com/allyourcodebase/glfw#98607df9bce062c7fd837d58fafa06dae22edb04",
-            .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
+        .zigl = .{
+            .url = "git+https://github.com/radarroark/zigl#0a757c714e7ad196b7df6644251a33a95c36224c",
+            .hash = "zigl-0.0.0-KE987zxWOAC1TGkHXwAr4WwlDIHyAurGqPzGnBxKWl2o",
         },
     },
     .paths = .{

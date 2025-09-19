@@ -7,11 +7,17 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "paladuro",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
-    addDeps(b, exe);
+    const dep = b.dependency("zigl", .{});
+    exe.root_module.linkLibrary(dep.artifact("zigl"));
+    exe.root_module.addIncludePath(dep.path("include"));
+    exe.root_module.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
+    exe.root_module.addIncludePath(b.path("deps/include"));
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -21,16 +27,4 @@ pub fn build(b: *std.Build) !void {
     }
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
-}
-
-fn addDeps(b: *std.Build, step: *std.Build.Step.Compile) void {
-    step.linkLibC();
-    step.addIncludePath(b.path("deps/include"));
-    step.addCSourceFile(.{ .file = b.path("deps/src/stb_image.c") });
-    step.addCSourceFile(.{ .file = b.path("deps/src/glad/gl.c") });
-    step.linkLibrary(b.dependency("glfw", .{}).artifact("glfw"));
-    switch (builtin.os.tag) {
-        .macos => step.linkFramework("QuartzCore"),
-        else => {},
-    }
 }

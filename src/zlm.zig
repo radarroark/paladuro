@@ -248,7 +248,29 @@ pub fn SpecializeOn(comptime Real: type) type {
             pub const unitX = Self.new(1, 0);
             pub const unitY = Self.new(0, 1);
 
-            pub usingnamespace VectorMixin(Self);
+            const Mixin = VectorMixin(Self);
+            pub const all = Mixin.all;
+            pub const add = Mixin.add;
+            pub const sub = Mixin.sub;
+            pub const mul = Mixin.mul;
+            pub const div = Mixin.div;
+            pub const scale = Mixin.scale;
+            pub const neg = Mixin.neg;
+            pub const dot = Mixin.dot;
+            pub const length = Mixin.length;
+            pub const length2 = Mixin.length2;
+            pub const distance = Mixin.distance;
+            pub const distance2 = Mixin.distance2;
+            pub const normalize = Mixin.normalize;
+            pub const abs = Mixin.abs;
+            pub const swizzle = Mixin.swizzle;
+            pub const componentMin = Mixin.componentMin;
+            pub const componentMax = Mixin.componentMax;
+            pub const componentClamp = Mixin.componentClamp;
+            pub const lerp = Mixin.lerp;
+            pub const eql = Mixin.eql;
+            pub const approxEqAbs = Mixin.approxEqAbs;
+            pub const approxEqRel = Mixin.approxEqRel;
 
             pub fn new(x: Real, y: Real) Self {
                 return Self{
@@ -312,7 +334,29 @@ pub fn SpecializeOn(comptime Real: type) type {
             pub const unitY = Self.new(0, 1, 0);
             pub const unitZ = Self.new(0, 0, 1);
 
-            pub usingnamespace VectorMixin(Self);
+            const Mixin = VectorMixin(Self);
+            pub const all = Mixin.all;
+            pub const add = Mixin.add;
+            pub const sub = Mixin.sub;
+            pub const mul = Mixin.mul;
+            pub const div = Mixin.div;
+            pub const scale = Mixin.scale;
+            pub const neg = Mixin.neg;
+            pub const dot = Mixin.dot;
+            pub const length = Mixin.length;
+            pub const length2 = Mixin.length2;
+            pub const distance = Mixin.distance;
+            pub const distance2 = Mixin.distance2;
+            pub const normalize = Mixin.normalize;
+            pub const abs = Mixin.abs;
+            pub const swizzle = Mixin.swizzle;
+            pub const componentMin = Mixin.componentMin;
+            pub const componentMax = Mixin.componentMax;
+            pub const componentClamp = Mixin.componentClamp;
+            pub const lerp = Mixin.lerp;
+            pub const eql = Mixin.eql;
+            pub const approxEqAbs = Mixin.approxEqAbs;
+            pub const approxEqRel = Mixin.approxEqRel;
 
             pub fn new(x: Real, y: Real, z: Real) Self {
                 return Self{
@@ -419,7 +463,29 @@ pub fn SpecializeOn(comptime Real: type) type {
             pub const unitZ = Self.new(0, 0, 1, 0);
             pub const unitW = Self.new(0, 0, 0, 1);
 
-            pub usingnamespace VectorMixin(Self);
+            const Mixin = VectorMixin(Self);
+            pub const all = Mixin.all;
+            pub const add = Mixin.add;
+            pub const sub = Mixin.sub;
+            pub const mul = Mixin.mul;
+            pub const div = Mixin.div;
+            pub const scale = Mixin.scale;
+            pub const neg = Mixin.neg;
+            pub const dot = Mixin.dot;
+            pub const length = Mixin.length;
+            pub const length2 = Mixin.length2;
+            pub const distance = Mixin.distance;
+            pub const distance2 = Mixin.distance2;
+            pub const normalize = Mixin.normalize;
+            pub const abs = Mixin.abs;
+            pub const swizzle = Mixin.swizzle;
+            pub const componentMin = Mixin.componentMin;
+            pub const componentMax = Mixin.componentMax;
+            pub const componentClamp = Mixin.componentClamp;
+            pub const lerp = Mixin.lerp;
+            pub const eql = Mixin.eql;
+            pub const approxEqAbs = Mixin.approxEqAbs;
+            pub const approxEqRel = Mixin.approxEqRel;
 
             pub fn new(x: Real, y: Real, z: Real, w: Real) Self {
                 return Self{
